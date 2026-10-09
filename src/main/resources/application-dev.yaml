@@ -1,0 +1,4 @@
+# Opt in only for a dedicated development database, never a production database.
+spring:
+  flyway:
+    locations: classpath:db/migration,classpath:db/dev

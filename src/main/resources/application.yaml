@@ -1,3 +1,55 @@
 spring:
   application:
     name: Tbooker
+  jackson:
+    deserialization:
+      accept-float-as-int: false
+      fail-on-unknown-properties: true
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:tbooker}}
+    username: ${SPRING_DATASOURCE_USERNAME:${DB_USERNAME:tbooker}}
+    password: ${SPRING_DATASOURCE_PASSWORD:${DB_PASSWORD}}
+    hikari:
+      connection-init-sql: SET TIME ZONE 'UTC'
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: tbooker
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    default-schema: public
+    validate-on-migrate: true
+    clean-disabled: true
+  mvc:
+    problemdetails:
+      enabled: true
+
+server:
+  port: ${SERVER_PORT:8080}
+
+security:
+  jwt:
+    secret: ${JWT_SECRET}
+    issuer: ${JWT_ISSUER:tbooker}
+    audience: ${JWT_AUDIENCE:tbooker-api}
+    ttl: ${JWT_TTL:PT15M}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,db
