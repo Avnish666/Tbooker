@@ -3,6 +3,7 @@ package com.example.Tbooker.service;
 import com.example.Tbooker.dto.ShowResponse;
 import com.example.Tbooker.dto.ShowSeatResponse;
 import com.example.Tbooker.entity.MovieShow;
+import com.example.Tbooker.entity.ShowSeatStatus;
 import com.example.Tbooker.exception.ShowNotFoundException;
 import com.example.Tbooker.repository.MovieShowRepository;
 import com.example.Tbooker.repository.ShowSeatRepository;
@@ -39,9 +40,9 @@ public class ShowCatalogueService {
 		if (!movieShowRepository.existsById(showId)) {
 			throw new ShowNotFoundException(showId);
 		}
-		return showSeatRepository.findByMovieShowIdOrderBySeatSeatNumberAscIdAsc(showId).stream()
+		return showSeatRepository.findAvailabilityByShowId(showId).stream()
 				.map(showSeat -> new ShowSeatResponse(showSeat.getId(), showId,
-						showSeat.getSeat().getId(), showSeat.getSeat().getSeatNumber(), showSeat.getStatus()))
+						showSeat.getSeatId(), showSeat.getSeatNumber(), ShowSeatStatus.valueOf(showSeat.getStatus())))
 				.toList();
 	}
 

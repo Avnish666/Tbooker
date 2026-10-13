@@ -13,6 +13,21 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice
 public class ApiExceptionHandler {
 
+	@ExceptionHandler(PaymentConflictException.class)
+	public ProblemDetail handlePaymentConflict(PaymentConflictException exception) {
+		return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+	}
+
+	@ExceptionHandler(GatewayVerificationException.class)
+	public ProblemDetail handleGatewayVerification(GatewayVerificationException exception) {
+		return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_GATEWAY, "The payment provider result could not be verified; retry the original payment key");
+	}
+
+	@ExceptionHandler(ReservationConflictException.class)
+	ProblemDetail handleReservationConflict(ReservationConflictException exception) {
+		return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+	}
+
 	private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
 
 	@ExceptionHandler(DuplicateEmailException.class)
@@ -43,6 +58,11 @@ public class ApiExceptionHandler {
 	@ExceptionHandler(DataIntegrityViolationException.class)
 	public ProblemDetail handleDataIntegrityViolation(DataIntegrityViolationException exception) {
 		for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
+			if (cause instanceof ConstraintViolationException violation
+					&& "23505".equals(violation.getSQLState())
+					&& "uq_reservations_held_seat".equals(violation.getConstraintName())) {
+				return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, "This show seat already has a hold");
+			}
 			if (cause instanceof ConstraintViolationException violation
 					&& "23505".equals(violation.getSQLState())
 					&& "uq_users_email".equals(violation.getConstraintName())) {

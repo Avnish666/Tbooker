@@ -40,7 +40,7 @@ class TbookerApplicationTests extends SecurityTestSupport {
 
 	@Test
 	void contextLoads() {
-		assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("4");
+		assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("6");
 		assertThat(flyway.validateWithResult().validationSuccessful).isTrue();
 		assertThat(jdbcTemplate.queryForObject(
 				"SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name = 'tbooker'",
@@ -59,7 +59,7 @@ class TbookerApplicationTests extends SecurityTestSupport {
 	@Test
 	void repeatedFlywayMigrationsLeaveDefaultSchemaHistoryUnchanged() {
 		var historyBefore = jdbcTemplate.queryForList("SELECT * FROM public.flyway_schema_history ORDER BY installed_rank");
-		assertThat(flyway.info().applied()).hasSize(4);
+		assertThat(flyway.info().applied()).hasSize(6);
 		for (int run = 0; run < 3; run++) {
 			assertThat(flyway.migrate().migrationsExecuted).isZero();
 			assertThat(flyway.validateWithResult().validationSuccessful).isTrue();

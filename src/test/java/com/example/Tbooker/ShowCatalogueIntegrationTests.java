@@ -227,7 +227,7 @@ class ShowCatalogueIntegrationTests extends SecurityTestSupport {
 						+ "SELECT movie_id, screen_id, start_time FROM tbooker.movie_shows",
 				"INSERT INTO tbooker.show_seats (show_id, seat_id, screen_id) "
 						+ "SELECT show_id, seat_id, screen_id FROM tbooker.show_seats",
-				"UPDATE tbooker.show_seats SET status = 'HELD'",
+				"UPDATE tbooker.show_seats SET status = 'UNSUPPORTED'",
 				"INSERT INTO tbooker.screens (theatre_id, name) VALUES (9223372036854775807, 'Orphan')",
 				"UPDATE tbooker.movie_shows SET movie_id = 9223372036854775807",
 				"UPDATE tbooker.seats SET screen_id = 9223372036854775807",

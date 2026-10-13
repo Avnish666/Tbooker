@@ -7,6 +7,7 @@ import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertySource;
 
 import javax.crypto.spec.SecretKeySpec;
@@ -16,6 +17,8 @@ import java.util.Base64;
 import java.util.List;
 
 /** Real signed test tokens and a random, process-local key; no authentication mocks. */
+// Close schedulers and connection pools before class-scoped PostgreSQL containers stop.
+@DirtiesContext
 public abstract class SecurityTestSupport {
 
 	private static final byte[] KEY = new byte[32];

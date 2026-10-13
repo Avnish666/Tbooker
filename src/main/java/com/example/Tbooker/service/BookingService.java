@@ -4,8 +4,8 @@ import com.example.Tbooker.dto.BookingRequest;
 import com.example.Tbooker.dto.BookingResponse;
 import com.example.Tbooker.entity.Booking;
 import com.example.Tbooker.exception.InvalidBookingRequestException;
+import com.example.Tbooker.exception.PaymentConflictException;
 import com.example.Tbooker.exception.ResourceNotFoundException;
-import com.example.Tbooker.exception.SeatAlreadyBookedException;
 import com.example.Tbooker.exception.ShowNotFoundException;
 import com.example.Tbooker.repository.BookingRepository;
 import com.example.Tbooker.repository.MovieShowRepository;
@@ -15,8 +15,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 @Service
@@ -49,19 +47,8 @@ public class BookingService {
 			throw new InvalidBookingRequestException(showId, request.showSeatId());
 		}
 
-		// Do not decide availability from the entity loaded above: it can already be stale.
-		if (showSeatRepository.bookIfAvailable(showId, request.showSeatId()) != 1) {
-			throw new SeatAlreadyBookedException(request.showSeatId());
-		}
-
-		// The native update cleared the persistence context. Obtain fresh references by ID.
-		var booking = new Booking(userRepository.getReferenceById(userId),
-				showSeatRepository.getReferenceById(request.showSeatId()),
-				Instant.now().truncatedTo(ChronoUnit.MICROS));
-		bookingRepository.saveAndFlush(booking);
-		// The transaction interceptor commits before the controller can send 201.
-		return new BookingResponse(booking.getId(), userId, showId, request.showSeatId(),
-				booking.getStatus(), booking.getCreatedAt());
+		throw new PaymentConflictException(
+				"Immediate booking is no longer supported; create a reservation and pay first");
 	}
 
 	@Transactional(readOnly = true)
