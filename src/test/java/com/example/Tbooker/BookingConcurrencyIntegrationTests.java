@@ -93,6 +93,7 @@ class BookingConcurrencyIntegrationTests extends SecurityTestSupport {
 			jdbcTemplate.update("DELETE FROM tbooker.mock_gateway_receipts WHERE request_id IN (SELECT gateway_request_id FROM tbooker.payments WHERE reservation_id IN (SELECT id FROM tbooker.reservations WHERE show_seat_id = ?))", showSeatId);
 			jdbcTemplate.update("DELETE FROM tbooker.payments WHERE reservation_id IN (SELECT id FROM tbooker.reservations WHERE show_seat_id = ?)", showSeatId);
 			jdbcTemplate.update("DELETE FROM tbooker.reservations WHERE show_seat_id = ?", showSeatId);
+			jdbcTemplate.update("DELETE FROM tbooker.outbox_events WHERE aggregate_id IN (SELECT id FROM tbooker.bookings WHERE show_seat_id = ?)", showSeatId);
 			jdbcTemplate.update("DELETE FROM tbooker.bookings WHERE show_seat_id = ?", showSeatId);
 			jdbcTemplate.update("DELETE FROM tbooker.show_seats WHERE id = ?", showSeatId);
 		}

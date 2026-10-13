@@ -1,4 +1,34 @@
 spring:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    admin:
+      fail-fast: false
+      operation-timeout: 3s
+      close-timeout: 1s
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.ByteArraySerializer
+      acks: all
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+        delivery.timeout.ms: ${KAFKA_DELIVERY_TIMEOUT_MS:5000}
+        request.timeout.ms: ${KAFKA_REQUEST_TIMEOUT_MS:2000}
+        max.block.ms: ${KAFKA_MAX_BLOCK_MS:1000}
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.ByteArrayDeserializer
+      enable-auto-commit: false
+      auto-offset-reset: earliest
+      max-poll-records: 20
+      properties:
+        allow.auto.create.topics: false
+    listener:
+      missing-topics-fatal: false
+  task:
+    scheduling:
+      pool:
+        size: 3
   application:
     name: Tbooker
   jackson:
@@ -51,6 +81,21 @@ catalogue:
     show-ttl: ${CACHE_SHOW_TTL:PT1M}
     show-list-ttl: ${CACHE_SHOW_LIST_TTL:PT30S}
 
+messaging:
+  enabled: ${MESSAGING_ENABLED:true}
+  scheduling-enabled: ${MESSAGING_SCHEDULING_ENABLED:true}
+  topic: ${BOOKING_EVENTS_TOPIC:tbooker.booking-confirmed.v1}
+  dead-letter-topic: ${BOOKING_EVENTS_DLT:tbooker.booking-confirmed.v1.DLT}
+  notification-group: ${BOOKING_NOTIFICATION_GROUP:tbooker-notifications-v1}
+  analytics-group: ${BOOKING_ANALYTICS_GROUP:tbooker-analytics-v1}
+  partitions: ${BOOKING_TOPIC_PARTITIONS:3}
+  replicas: ${BOOKING_TOPIC_REPLICAS:1}
+  batch-size: ${OUTBOX_BATCH_SIZE:20}
+  lease: ${OUTBOX_LEASE:PT30S}
+  retry-initial: ${OUTBOX_RETRY_INITIAL:PT1S}
+  retry-max: ${OUTBOX_RETRY_MAX:PT1M}
+  consumer-retries: ${BOOKING_CONSUMER_RETRIES:3}
+
 payments:
   mock:
     amount-minor: ${PAYMENTS_MOCK_AMOUNT_MINOR:10000}
@@ -71,12 +116,14 @@ management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,metrics
   endpoint:
     health:
       show-details: never
       probes:
         enabled: true
       group:
+        messaging:
+          include: kafkaConnectivity
         readiness:
           include: readinessState,db

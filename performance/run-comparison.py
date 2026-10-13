@@ -96,7 +96,7 @@ def main():
         env = {k: v for k, v in os.environ.items() if not k.startswith(("SPRING_", "DB_", "REDIS_", "CACHE_", "JWT_", "CATALOGUE_", "SERVER_"))}
         env.update({"SPRING_DATASOURCE_URL": f"jdbc:postgresql://127.0.0.1:{mapped_port(pg, 5432)}/tbooker_bench",
                     "SPRING_DATASOURCE_USERNAME": "postgres", "SPRING_DATASOURCE_PASSWORD": container_env["POSTGRES_PASSWORD"],
-                    "SPRING_PROFILES_ACTIVE": "dev", "JWT_SECRET": base64.b64encode(secrets.token_bytes(32)).decode(),
+                    "SPRING_PROFILES_ACTIVE": "dev", "MESSAGING_ENABLED": "false", "JWT_SECRET": base64.b64encode(secrets.token_bytes(32)).decode(),
                     "SERVER_PORT": str(app_port), "REDIS_HOST": "127.0.0.1", "REDIS_PORT": str(mapped_port(redis, 6379))})
         records = []
         with tempfile.TemporaryDirectory(prefix="tbooker-benchmark-") as tmp:

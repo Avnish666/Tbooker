@@ -95,8 +95,10 @@ curl --fail http://localhost:8080/api/v1/health
 This endpoint confirms HTTP handling and does not query the database. Actuator
 also exposes `GET /actuator/health`, `/actuator/health/liveness`, and
 `/actuator/health/readiness`. Readiness includes the database health indicator;
-liveness does not. Optional Redis is excluded from health/readiness. Healthy responses return `200`; unhealthy health groups can
-return `503`. Component details are hidden. Only health is exposed from Actuator.
+liveness does not. Optional Redis is excluded from health/readiness. Kafka has a
+separate `/actuator/health/messaging` group and participates in overall health,
+but not booking readiness. Healthy responses return `200`; unhealthy health groups can
+return `503`. Component details are hidden. Metrics are additionally exposed to ADMIN JWTs only.
 
 ## Movie and theatre catalogue
 
@@ -465,3 +467,29 @@ Mock outcome controls are trusted server configuration, never request parameters
 (default), FAILED, or PENDING. `PAYMENTS_MOCK_AMOUNT_MINOR` is positive (default
 10000); currency is fixed INR. Configuration changes affect only new receipts.
 There is no public way to advance a deliberately PENDING mock receipt.
+
+
+## Asynchronous booking effects and operational metrics
+
+Phase 10 preserves all booking/payment HTTP DTOs and statuses. Successful booking
+confirmation commits an outbox event before returning. It does not wait for Kafka,
+notification delivery, or analytics; those projections may lag. Retrying a
+confirmed reservation returns the existing booking without another logical event.
+Outbox insertion/commit failure rolls back booking allocation and follows the
+existing database-failure response/retry behavior; previously verified payment
+SUCCESS remains durable. There are no notification, analytics, event-publish, or
+DLT-replay HTTP mutation endpoints.
+
+| Method | Path | Access / behavior |
+| --- | --- | --- |
+| GET | `/actuator/health/messaging` | Public; 200 when broker reachable, 503 when unavailable; details hidden. |
+| GET | `/actuator/metrics` | ADMIN JWT; lists registered metrics. |
+| GET | `/actuator/metrics/{name}` | ADMIN JWT; returns metric measurements/tags, e.g. `booking.outbox.pending`. |
+
+Missing credentials return 401 for metrics; USER tokens return 403. Public
+registration still cannot assign ADMIN. Overall `/actuator/health` can return 503
+for Kafka failure while `/actuator/health/readiness` remains 200 with a healthy
+database. Use the readiness group for routing booking traffic. Disabling messaging
+reports its connectivity component as UP/disabled and still records outbox rows.
+The Kafka event contract, consumer group names, and replay procedure are documented
+in [MESSAGING.md](MESSAGING.md); they are internal infrastructure contracts.

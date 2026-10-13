@@ -9,7 +9,8 @@ booking ownership. Phase 7 adds five-minute seat reservations, expiry, owner-onl
 confirmation/cancellation, and repeatable confirmation. Phase 8 adds idempotent
 mock UPI/Card payments and requires verified payment for new bookings. Phase 9
 adds optional Redis caching for public catalogue metadata, PostgreSQL fallback,
-and reproducible k6 measurements. Later
+and reproducible k6 measurements. Phase 10 adds transactional-outbox booking
+events, Kafka publication, mock notifications, and an idempotent analytics projection. Later
 features are planned in [the roadmap](docs/ROADMAP.md).
 
 ## Stack
@@ -19,11 +20,13 @@ features are planned in [the roadmap](docs/ROADMAP.md).
 - Spring MVC, Validation, Data JPA, Actuator, and Flyway
 - Spring Security resource server, BCrypt, and Nimbus JOSE + JWT 10.10
 - PostgreSQL 17, Redis 7.4, Spring Cache/Data Redis with Lettuce
+- Spring for Apache Kafka 3.3.16; Apache Kafka 3.9.1 in KRaft mode
 - Docker Compose, JUnit 5, Mockito, Testcontainers, and k6 load scripts
 
 The original application package, `com.example.Tbooker`, is retained. Authentication
 and PostgreSQL-backed temporary holds and mock payments are implemented. Real
-providers and Kafka remain future work. Redis caches catalogue DTOs only.
+providers and real email remain future work. Redis caches catalogue DTOs only;
+Kafka handles asynchronous booking facts without participating in booking commits.
 
 ## Current functionality and architecture
 
@@ -37,6 +40,8 @@ providers and Kafka remain future work. Redis caches catalogue DTOs only.
 - List and retrieve only your own bookings; ADMIN has no ownership bypass.
 - Reject competing bookings using an atomic availability update and a unique
   booking constraint; roll back the seat claim if booking insertion fails.
+- Persist one confirmation event with each new booking; publish with recoverable database leases.
+- Consume in independent notification/analytics groups with durable deduplication and a DLT.
 - Apply Flyway migrations, optionally seed a development catalogue, and expose
   HTTP health plus database-aware readiness.
 - Verify integration against real PostgreSQL, including 20 contending HTTP
@@ -61,11 +66,18 @@ flowchart LR
         Cleanup[ReservationCleanup scheduler] --> Inventory[SeatInventoryService]
         Services --> Inventory
         Inventory --> Repos
+        Services --> Recorder[BookingEventRecorder - same booking transaction]
+        Recorder --> Outbox[(PostgreSQL outbox)]
+        Publisher[Leased OutboxPublisher] --> Outbox
+        Consumers[Notification and analytics processors] --> Projections[(PostgreSQL projections and deduplication)]
         Services --> Repos[Spring Data JPA repositories]
         Repos --> Persistence[Hibernate and HikariCP]
         Flyway[Flyway startup migrations]
     end
     Catalogue --> Redis[(Optional Redis DTO cache)]
+    Publisher --> Kafka[(Kafka booking-confirmed topic)]
+    Kafka --> Consumers
+    Consumers --> DLT[(Dead Letter Topic)]
     Persistence --> DB[(PostgreSQL)]
     Ledger --> DB
     Flyway --> DB
@@ -74,7 +86,7 @@ flowchart LR
 The repository has one Maven module and one deployable application, organized
 by technical layers. Catalogue and booking responsibilities are separate
 services; domain module boundaries are not enforced by a module framework.
-Docker Compose runs PostgreSQL and optional Redis; the Java application runs on the host.
+Docker Compose runs PostgreSQL, Redis, and one KRaft Kafka broker; the Java application runs on the host.
 
 | Document | Contents |
 | --- | --- |
@@ -86,6 +98,7 @@ Docker Compose runs PostgreSQL and optional Redis; the Java application runs on 
 | [Security](docs/SECURITY.md) | Authentication flow, filter chain, ownership, roles, setup, and limitations. |
 | [Booking](docs/BOOKING.md) | Detailed race-condition and transaction explanation. |
 | [Testing](docs/TESTING.md) | Executed test evidence, concurrency protocol, and limitations. |
+| [Messaging](docs/MESSAGING.md) | Outbox, consumers, retries, DLT replay, configuration, and operational limits. |
 | [Performance](docs/PERFORMANCE.md) | Reproducible k6 baseline/cache comparison, measured results, and limits. |
 | [Roadmap](docs/ROADMAP.md) | Completed phases and future milestones. |
 
@@ -99,7 +112,7 @@ Windows; no global Maven installation is required.
 cp .env.example .env
 # Edit .env: choose DB_PASSWORD and set JWT_SECRET to a fresh random Base64 key.
 # Generate the JWT_SECRET value with: openssl rand -base64 32
-docker compose up -d --wait postgres redis
+docker compose up -d --wait postgres redis kafka
 
 # Bash: Spring Boot does not automatically read .env.
 set -a
@@ -110,7 +123,8 @@ bash mvnw spring-boot:run
 
 Keep `.env` private. Its values configure the host Java process and the database
 containers. Redis is disposable, has no persistent volume, and uses a 128 MiB
-LRU memory limit. Both ports bind to loopback; the Compose Redis has no password
+LRU memory limit. Kafka persists logs in `kafka_data` and uses a single KRaft node.
+Published host ports bind to loopback; Kafka uses PLAINTEXT and the Compose Redis has no password
 and is for local development only. Use shell-compatible assignments (quote values containing special
 characters). PostgreSQL is exposed only on loopback. Its data lives in the
 `postgres_data` named volume and survives `docker compose down`.
@@ -141,6 +155,12 @@ volume; changing `.env` later does not change database users or passwords.
 | `CATALOGUE_CACHE_ENABLED` | `true`; `false` uses a no-op cache for comparison or operations |
 | `CACHE_METADATA_TTL` / `CACHE_METADATA_LIST_TTL` | `PT10M` / `PT5M` |
 | `CACHE_SHOW_TTL` / `CACHE_SHOW_LIST_TTL` | `PT1M` / `PT30S` |
+| `KAFKA_PORT` / `KAFKA_BOOTSTRAP_SERVERS` | `9092` / `localhost:9092`; change both when using another local port |
+| `MESSAGING_ENABLED` | `true`; disabling workers still records durable outbox events |
+| `BOOKING_EVENTS_TOPIC` / `BOOKING_EVENTS_DLT` | `tbooker.booking-confirmed.v1` / same name plus `.DLT` |
+| `BOOKING_TOPIC_PARTITIONS` / `BOOKING_TOPIC_REPLICAS` | `3` / `1` (local single-broker setup) |
+| `OUTBOX_BATCH_SIZE` / `OUTBOX_LEASE` | `20` / `PT30S` |
+| `OUTBOX_RETRY_INITIAL` / `OUTBOX_RETRY_MAX` | `PT1S` / `PT1M` |
 
 For a managed database, inject the `SPRING_DATASOURCE_*` variables and JWT key securely.
 Do not store real credentials in Git. Compose provisions a local development
@@ -173,9 +193,11 @@ curl --fail http://localhost:8080/actuator/health/readiness
 
 `GET /api/v1/health` returns `{"status":"UP"}` and checks that HTTP handling is
 available. It has no business logic or persistence access, so it does not need a
-pass-through service. Actuator health and readiness include the database check;
-liveness does not depend on database availability. Only health is exposed from
-Actuator, with component details hidden.
+pass-through service. Actuator readiness includes the database check;
+liveness does not depend on database availability. Overall health also includes
+Kafka; `/actuator/health/messaging` checks broker connectivity. Kafka failure does
+not fail booking readiness. Health is public with details hidden; metrics require
+an ADMIN JWT.
 
 Security failures and Spring MVC errors use RFC 9457 Problem Details.
 Missing shows return centralized `404` Problem Details; invalid IDs return `400`.
@@ -339,7 +361,9 @@ constraint on the show seat. V4 adds password
 hashes and roles while preserving existing users and bookings. Legacy accounts
 without a hash cannot log in. V6 adds payment attempts, durable mock receipts,
 owner/key uniqueness and payment confirmation links; historical bookings are
-preserved without fabricated charges.
+preserved without fabricated charges. V7 adds the outbox, processed-event markers,
+mock notifications, and an analytics baseline. Quiesce booking writes during the
+V7/pre-Phase-10 binary rollout; historical notifications are not fabricated.
 Migration history is in `public.flyway_schema_history`. Hibernate uses the
 `tbooker` schema with `ddl-auto: validate`; it does not create or alter tables.
 
@@ -360,12 +384,13 @@ bash mvnw clean verify
 
 The full suite requires a running Docker daemon. Tests generate a random JWT key;
 no production key or `.env` is required. Testcontainers creates isolated
-PostgreSQL and (in cache tests) Redis containers on random ports, applies Flyway migrations, and cleans them
+PostgreSQL, Kafka (messaging tests), and Redis (cache tests) containers on random ports, applies Flyway migrations, and cleans them
 up after testing. Tests use container connection details and do not depend on
 the Compose database or a developer's database credentials. The first run pulls
-the PostgreSQL, Redis, and Testcontainers helper images. Existing regression
-classes disable the optional cache; dedicated cache tests enable real Redis and
-verify metadata, outages, transactions, and contending reservations together.
+the PostgreSQL, Redis, Kafka, and Testcontainers helper images. Existing regression
+classes disable optional Kafka workers; booking still records its outbox event.
+Dedicated Kafka and Redis tests enable their real infrastructure and verify
+outages, recovery, transactions, and contention.
 
 The suite checks health, catalogue responses, Problem Details, application
 startup, migration validation, JPA relationships, database constraints, UTC
@@ -384,9 +409,9 @@ all 20 transactions to contend at PostgreSQL. Migration checks call Flyway again
 and verify that migration history and application data remain unchanged.
 
 See [TESTING.md](docs/TESTING.md) for execution details and remaining weaknesses.
-The Phase 9 full run passed **218 tests: 0 failures, 0 errors, 0 skipped**.
-It includes all 194 earlier regression cases and 24 Redis/PostgreSQL cache cases.
-See the full-run counts in [TESTING.md](docs/TESTING.md#phase-9-verification).
+The Phase 10 full run passed **251 tests: 0 failures, 0 errors, 0 skipped**.
+It includes all 218 earlier regression cases and 33 PostgreSQL/Kafka messaging cases.
+See the full-run counts in [TESTING.md](docs/TESTING.md#phase-10-verification).
 The separate [k6 comparison](docs/PERFORMANCE.md) records performance evidence;
 correctness tests do not establish production throughput.
 
@@ -422,6 +447,8 @@ Under `src/main/java/com/example/Tbooker`:
 | `service` | Use cases and transaction boundaries |
 | `repository` | Persistence access |
 | `cache` | Cache names, JPA change events, after-commit invalidation, and failure handling |
+| `event` | Versioned booking DTO and validation/fingerprinting |
+| `messaging` | Kafka listeners, leased asynchronous publisher, and metrics |
 | `payment` | PaymentStrategy, injected provider registry, mock adapters and durable ledger |
 | `entity` | JPA domain entities, kept out of API bodies |
 | `dto` | API request and response types |
@@ -440,8 +467,8 @@ Later phases will define catalogue administration, filters and pagination,
 overlap-aware scheduling, confirmed-booking cancellation, and general request idempotency.
 Later identity work includes password reset, email verification, and token revocation.
 Real provider integration, automated reconciliation, refunds and payment
-operations need a later phase. Redis metadata caching is implemented; Kafka
-workflows remain proposals for demonstrated needs. Delivery work still includes
+operations need a later phase. Redis metadata caching and Kafka booking-event
+processing are implemented. Delivery work still includes
 an application Dockerfile, CI, and
 deployment/backup procedures. See the [roadmap](docs/ROADMAP.md).
 
@@ -476,7 +503,7 @@ run, while claim paths and expiry-aware reads work even with the scheduler off.
 Optional Spring properties are `reservations.cleanup.enabled` (default `true`)
 and `reservations.cleanup.delay-ms` (default `30000`).
 
-No real payments, Kafka, hold renewal, general idempotency keys, reservation
+No real payments, hold renewal, general idempotency keys, reservation
 listing, hold quotas, or confirmed-booking cancellation are included. A lost
 hold-creation response has no dedicated recovery mechanism. See the state and
 transaction diagrams in [HLD](docs/HLD.md) and [LLD](docs/LLD.md).
@@ -492,3 +519,32 @@ There is no automatic payment reconciliation worker, operator API, or refund
 workflow. A late extra financial success is retained for investigation, while
 booking uniqueness prevents another allocation. External exactly-once execution,
 real payment security certification, and production readiness are not claimed.
+
+
+## Booking events and Kafka operations
+
+Booking confirmation records its outbox event in the same PostgreSQL transaction.
+A short claim transaction grants a lease; the publisher then waits asynchronously
+for Kafka outside database transactions. Independent consumer groups persist one
+mock notification and count the booking using transactional deduplication. Kafka
+outages delay those projections without rolling back confirmed bookings.
+
+The default V1 topic has three partitions and uses `bookingId` as its key. Crashes
+between Kafka acknowledgment and the outbox update can cause duplicate sends;
+consumer markers prevent duplicate effects. Consumer retries are bounded; poison
+records go to a DLT only after its send is acknowledged. See [MESSAGING.md](docs/MESSAGING.md)
+for replay instructions, metrics, failure cases, schema, and multi-instance limits.
+
+```bash
+curl --fail http://localhost:8080/actuator/health/readiness
+curl -i http://localhost:8080/actuator/health/messaging
+# Use an actual ADMIN token; public registration still creates USER accounts only.
+curl --fail http://localhost:8080/actuator/metrics/booking.outbox.pending \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
+docker compose exec kafka /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server localhost:19092 --list
+```
+
+There is no notification/analytics mutation API, automatic DLT replay, retention
+cleanup job, real email integration, or Kafka HA deployment. Source and DLT topics
+retain messages for seven days by default; PostgreSQL outbox/dedup rows remain.

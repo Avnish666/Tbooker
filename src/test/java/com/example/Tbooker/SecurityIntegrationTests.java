@@ -79,6 +79,7 @@ class SecurityIntegrationTests extends SecurityTestSupport {
 		jdbc.update("DELETE FROM tbooker.payments");
 		jdbc.update("DELETE FROM tbooker.mock_gateway_receipts");
 		jdbc.update("DELETE FROM tbooker.reservations");
+		jdbc.update("DELETE FROM tbooker.outbox_events");
 		jdbc.update("DELETE FROM tbooker.bookings");
 		jdbc.update("UPDATE tbooker.show_seats SET status = 'AVAILABLE'");
 		jdbc.update("DELETE FROM tbooker.users WHERE email NOT IN ('alex@example.test', 'priya@example.test')");

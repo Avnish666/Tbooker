@@ -518,7 +518,7 @@ class PaymentIntegrationTests extends SecurityTestSupport {
                         + "SELECT user_id,show_seat_id,'CONFIRMED',created_at,created_at+interval '5 minutes',id FROM tbooker.bookings");
                 try (var rows = statement.executeQuery(snapshot)) { while (rows.next()) { before.add(rows.getString(1)); } }
             }
-            var upgrade = Flyway.configure().dataSource(url, postgres.getUsername(), postgres.getPassword()).defaultSchema("public").load();
+            var upgrade = Flyway.configure().dataSource(url, postgres.getUsername(), postgres.getPassword()).defaultSchema("public").target("6").load();
             assertThat(upgrade.migrate().migrationsExecuted).isEqualTo(1);
             assertThat(upgrade.validateWithResult().validationSuccessful).isTrue();
             assertThat(upgrade.migrate().migrationsExecuted).isZero();

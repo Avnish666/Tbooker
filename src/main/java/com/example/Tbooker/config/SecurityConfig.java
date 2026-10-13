@@ -116,6 +116,7 @@ public class SecurityConfig {
 						.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
 						.requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login").permitAll()
 						.requestMatchers("/api/v1/health", "/actuator/health", "/actuator/health/**").permitAll()
+						.requestMatchers(HttpMethod.GET, "/actuator/metrics", "/actuator/metrics/**").hasRole("ADMIN")
 						.requestMatchers(HttpMethod.GET, "/api/shows", "/api/shows/*", "/api/shows/*/seats").permitAll()
 						.requestMatchers(HttpMethod.HEAD, "/api/shows", "/api/shows/*", "/api/shows/*/seats").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/movies", "/api/movies/*", "/api/theatres", "/api/theatres/*").permitAll()

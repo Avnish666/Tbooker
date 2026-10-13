@@ -95,6 +95,17 @@ contracts where stated. See `API.md` for the current contract.
 - Provide reproducible k6 baseline/cache comparison with measured query/hit counts.
 - Retain all prior authentication, payment, migration, and concurrency regressions.
 
+## Phase 10 — Kafka and transactional outbox (implemented)
+
+- Atomically record one V1 confirmation event with each new paid booking.
+- Publish through database-time leases, SKIP LOCKED, fencing, and capped backoff.
+- Keep broker waits outside PostgreSQL transactions and preserve events during outages.
+- Run independent notification/analytics groups with transactional deduplication.
+- Bound consumer retries, preserve raw failed events in an acknowledged DLT, and document replay.
+- Provide KRaft Compose configuration, connectivity health, ADMIN metrics, and failure tests.
+- Retain Redis, JWT, payment, reservation, and migration regression coverage.
+- Do not claim real email, cross-system exactly-once, or production HA readiness.
+
 ## Future — Catalogue administration and scheduling
 
 - Add validated write use cases for catalogues and venue layouts when requested.
@@ -128,10 +139,9 @@ contracts where stated. See `API.md` for the current contract.
 - Expand metrics, structured logs, tracing, load scenarios, and query/index tuning
   beyond the Phase 9 cache counters and local catalogue benchmark.
 - Use measured cache behavior to decide whether to add stampede control, a
-  circuit breaker, durable invalidation, and TTL jitter. Consider Kafka only for
-  specific asynchronous workflows; it is not a prerequisite for the monolith.
-- If asynchronous processing is introduced, define outbox delivery, consumer
-  idempotency, retry behavior, and failure recovery first.
+  circuit breaker, durable invalidation, and TTL jitter.
+- Expand Kafka operations with lag/backlog alerts, retention/archiving policies,
+  secured multi-node deployment, and controlled replay tooling when requested.
 
 ## Future — Delivery and operations
 
@@ -143,5 +153,5 @@ contracts where stated. See `API.md` for the current contract.
 - Publish reproducible performance evidence for the resume project, with
   limitations documented.
 
-Advance one phase at a time. Phase 9 adds Redis metadata caching only; real
-providers, Kafka, refunds, and confirmed-booking cancellation remain future work.
+Advance one phase at a time. Phase 10 adds Kafka booking projections only; real
+providers, real email, refunds, and confirmed-booking cancellation remain future work.

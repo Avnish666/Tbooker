@@ -1,8 +1,9 @@
 # Low-level design
 
 The implementation lives under `com.example.Tbooker`. It uses controllers,
-concrete service classes, Spring Data repository interfaces, JPA entities, DTO
-records, centralized exceptions, Spring Security configuration, and a payment Strategy interface.
+concrete service classes, Spring Data repository interfaces, JDBC repositories,
+JPA entities, DTO records, centralized exceptions, Spring Security configuration,
+a payment Strategy interface, and Kafka producers/listeners.
 [HLD](HLD.md) describes deployment and scope;
 [DATABASE](DATABASE.md) defines the physical schema.
 
@@ -117,6 +118,9 @@ classDiagram
     ReservationService --> UserRepository
     ReservationService --> BookingRepository
     ReservationService --> SeatInventoryService
+    ReservationService --> BookingEventRecorder
+    BookingEventRecorder --> OutboxRepository
+    BookingEventRecorder --> BookingEventCodec
     ReservationCleanup --> SeatInventoryService
     SeatInventoryService --> ShowSeatRepository
     SeatInventoryService --> ReservationRepository
@@ -147,7 +151,7 @@ classDiagram
     JpaRepository <|-- BookingRepository
 ```
 
-All eight repositories (including the payment repository below) extend `JpaRepository<Entity, Long>`. Inherited operations
+The eight JPA repositories (including the payment repository below) extend `JpaRepository<Entity, Long>`. Inherited operations
 used by booking include `existsById`, `findById`, `getReferenceById`, and
 `saveAndFlush`. `PaymentStrategy` is the gateway interface; there are no generic service interfaces or repositories for
 entities without a current persistence use case of their own.
@@ -293,7 +297,9 @@ The read-only annotation is not a database authorization boundary.
 bookings in Phase 8. All new bookings use `ReservationService.confirmLocked`:
 verified SUCCESS proof, active owned reservation, conditional HELD-to-BOOKED,
 `BookingRepository.saveAndFlush`, conditional reservation confirmation, and
-payment confirmation status are one READ_COMMITTED transaction. Historical
+payment confirmation status, and the new outbox event are one READ_COMMITTED
+transaction. `BookingEventRecorder.confirmed` joins it with MANDATORY propagation;
+confirmation retries return before generating another event. Historical
 confirmed bookings are returned without inventing payments.
 
 Native writes flush and clear the persistence context. Queries before a lock
@@ -322,8 +328,8 @@ sequenceDiagram
     Security->>Controller: Authenticated Jwt and authorized role
     Controller->>Service: initiate(subject, reservationId, request, key)
     Service->>Tx: prepare
-    Tx->>DB: TX1 lock seat; recheck owner, expiry, key; insert PENDING
-    Tx-->>Service: Commit; stored command with stable gateway UUID
+    Tx->>DB: TX1 lock seat, recheck owner, expiry, key, insert PENDING
+    Tx-->>Service: Commit, stored command with stable gateway UUID
     Service->>Gateway: charge(command), no application transaction
     Gateway->>Ledger: Insert receipt ON CONFLICT DO NOTHING
     Ledger->>DB: Separate REQUIRES_NEW mock provider transaction
@@ -333,18 +339,19 @@ sequenceDiagram
     Ledger-->>Gateway: Matching receipt
     Gateway-->>Processor: Canonical result and version
     Processor->>Tx: recordVerified(paymentId, result)
-    Tx->>DB: TX2 lock seat; validate identity/version; persist SUCCESS
+    Tx->>DB: TX2 lock seat, validate identity/version, persist SUCCESS
     Tx-->>Processor: Financial outcome committed
     Processor->>Reservation: confirmForPayment(reservationId, owner, paymentId)
-    Reservation->>DB: TX3 lock seat; sample time; reload active owned hold and SUCCESS proof
+    Reservation->>DB: TX3 lock seat, sample time, reload active owned hold and SUCCESS proof
     alt Active and valid
-        Reservation->>DB: HELD to BOOKED; insert unique booking; link reservation/payment; mark CONFIRMED
-        Reservation-->>Processor: Commit all four writes
+        Reservation->>DB: HELD to BOOKED, insert unique booking, link reservation/payment, mark CONFIRMED
+        Reservation->>DB: Insert unique BookingConfirmed outbox event
+        Reservation-->>Processor: Commit all five writes, no Kafka call
     else Expired, cancelled, or confirmed by another payment
-        Reservation-->>Processor: Roll back; domain conflict
+        Reservation-->>Processor: Roll back, domain conflict
         Processor->>Tx: Separate transaction marks RECONCILIATION_REQUIRED
     else Database write failure
-        Reservation-->>Processor: Roll back; keep SUCCESS/PENDING for retry
+        Reservation-->>Processor: Roll back, keep SUCCESS/PENDING for retry
     end
     Service->>Tx: get owned payment DTO
     Service-->>Controller: Current persisted result
@@ -470,7 +477,7 @@ sequenceDiagram
     Client->>Security: POST /api/reservations/{id}/confirmation + bearer JWT
     Security->>Controller: Validated Jwt principal and USER or ADMIN role
     Controller->>Service: confirm(id, principal subject)
-    Service->>DB: Begin; find seat ID for reservation AND owner
+    Service->>DB: Begin, find seat ID for reservation AND owner
     Service->>Inventory: lockAndExpire(seatId)
     Inventory->>DB: SELECT seat FOR UPDATE
     Inventory->>DB: SELECT clock_timestamp()
@@ -479,19 +486,20 @@ sequenceDiagram
     Service->>DB: Reload owned reservation
     alt Already CONFIRMED
         Service->>DB: Read linked booking
-        Service-->>Controller: Commit; original BookingResponse
+        Service-->>Controller: Commit, original BookingResponse
     else HELD and expiresAt greater than decision time
         Service->>DB: Require owned SUCCESS payment for this reservation
         Service->>DB: Conditional HELD to BOOKED inventory update
         Service->>DB: INSERT unique confirmed booking
         Service->>DB: Conditional HELD to CONFIRMED with booking and payment IDs
         Service->>DB: Mark payment confirmation CONFIRMED
-        Service-->>Controller: Commit all writes; BookingResponse
+        Service->>DB: Insert unique BookingConfirmed outbox event
+        Service-->>Controller: Commit all writes, BookingResponse
     else Expired, cancelled, or no verified payment
         Service->>DB: Roll back
         Service-->>Controller: ReservationConflictException or PaymentConflictException maps to 409
     end
-    Controller-->>Client: 200 for new or repeated confirmation; otherwise Problem Detail
+    Controller-->>Client: 200 for new or repeated confirmation, otherwise Problem Detail
 ```
 
 Unknown/foreign IDs fail `404` before locking. A booking insert, reservation
@@ -567,7 +575,8 @@ with `new` inside a use case.
 SRP separates HTTP, orchestration, transactional persistence, gateway behavior,
 and booking policy. DIP/OCP apply at the gateway interface, not as a claim that
 the entire application is framework-independent. Recovery is an explicit
-multi-transaction workflow; no general Saga engine, outbox, or distributed event bus is present.
+multi-transaction workflow; no general Saga engine is present. Phase 10 adds a PostgreSQL outbox and Kafka
+for downstream booking projections; it does not distribute payment transactions.
 
 
 ## Cache-aside collaborators and execution order
@@ -611,7 +620,7 @@ sequenceDiagram
         R-->>P: JSON DTO
     else Miss, timeout, or serialization failure
         P->>S: Read requested catalogue
-        S->>DB: Begin read-only transaction; query
+        S->>DB: Begin read-only transaction, query
         DB-->>S: Entities
         S-->>P: Map DTO and end transaction
         P->>R: SET JSON DTO with finite TTL (best effort)
@@ -637,3 +646,56 @@ collaborator; the framework CacheManager/CacheErrorHandler interfaces provide
 DIP at the infrastructure boundary. Cache-aside, DTO, Repository, Service Layer,
 Spring proxy interception, and Observer are the added/reused patterns. No custom
 cache abstraction, distributed lock, or singleton framework is invented.
+
+
+## Booking event classes and responsibilities
+
+```mermaid
+classDiagram
+    ReservationService --> BookingEventRecorder
+    BookingEventRecorder --> BookingEventCodec
+    BookingEventRecorder --> OutboxRepository
+    OutboxRepository --> JdbcTemplate
+    MessagingScheduling --> OutboxPublisher
+    MessagingScheduling --> KafkaAdmin
+    OutboxPublisher --> OutboxRepository
+    OutboxPublisher --> KafkaOperations
+    OutboxPublisher --> OutboxMetrics
+    BookingEventListeners --> BookingEventCodec
+    BookingEventListeners --> BookingEventProcessor
+    BookingEventProcessor --> BookingProjectionRepository
+    BookingEventProcessor --> BookingEventCodec
+    BookingProjectionRepository --> JdbcTemplate
+    KafkaMessagingConfiguration --> DefaultErrorHandler
+    DefaultErrorHandler --> DeadLetterPublishingRecoverer
+    DeadLetterPublishingRecoverer --> KafkaOperations
+    KafkaConnectivityHealth ..|> HealthIndicator
+```
+
+| Class/method | Responsibility and boundary |
+| --- | --- |
+| `BookingConfirmedEvent` | Immutable validated V1 record with UUID identity and UTC fact time. |
+| `BookingEventCodec.decode/encode/fingerprint` | Map JSON, validate schema values/key, and hash canonical content without logging raw input. |
+| `BookingEventRecorder.confirmed` | Record the event inside an existing booking transaction; no Kafka dependency. |
+| `OutboxRepository.append/claim/published/failed` | JDBC persistence, bounded SKIP LOCKED claims, and lease-token conditional updates. |
+| `OutboxPublisher.publishBatch` | NEVER propagation, bounded local in-flight work, async send, completion on a dedicated executor; no database transaction during Kafka wait. |
+| `BookingEventListeners.notifyBooking/countBooking` | Independent `@KafkaListener` groups; decode then invoke the separate transactional processor proxy. |
+| `BookingEventProcessor.notifyBooking/countBooking` | READ_COMMITTED marker plus projection transaction. Offset acknowledgment follows successful return. |
+| `BookingProjectionRepository.firstDelivery` | Insert durable marker; identical replay returns false; changed content or another ID for the same booking fails. |
+| `KafkaMessagingConfiguration` | Topics, record acknowledgment, bounded retries, and acknowledged DLT recovery. |
+| `MessagingScheduling` / `OutboxMetrics` | Poll publisher, retry topic creation, sample backlog, and record process counters/timers. |
+| `KafkaConnectivityHealth` | Bounded broker probe, excluded from database-based booking readiness. |
+
+The new repositories use JdbcTemplate because lease updates, conditional markers,
+and counter increments are explicit SQL operations; no speculative JPA entities
+or generic messaging framework are introduced. Spring Kafka supplies producer,
+consumer, error-handler, and lifecycle interfaces. `KafkaOperations` is the
+publisher's injected transport interface; `HealthIndicator` is the health strategy.
+The recorder keeps Kafka classes out of reservation logic.
+
+Added patterns are Transactional Outbox, Idempotent Consumer, and Publish/Subscribe.
+Repository, DTO, Service Layer, constructor DI, and framework transaction proxies
+are reused. SRP separates allocation, durable event capture, publication, transport
+listeners, and projection changes. No notification Strategy is needed for a single
+mock channel; the existing payment Strategy remains unchanged. See the complete
+[sequence and recovery model](MESSAGING.md#transaction-boundaries-and-delivery-guarantee).

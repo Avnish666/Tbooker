@@ -161,22 +161,24 @@ Phase 8 now has a concrete gateway variation point justifying PaymentStrategy an
 an injected registry (decision 15).
 Actual patterns and SOLID limitations are documented in [LLD.md](LLD.md).
 
-## 9. Keep allocation in PostgreSQL; defer brokers and service extraction
+## 9. Keep allocation in PostgreSQL; add downstream infrastructure by phase
 
-**Decision:** Keep PostgreSQL authoritative and defer brokers, real providers,
-and microservices. Phase 8 adds the mock payment boundary and recovery states.
-Phase 9 supersedes the earlier decision to defer catalogue caches only; it does
-not introduce Redis into inventory or payment correctness.
+**Decision:** Keep PostgreSQL authoritative and defer real providers and
+microservices. Phase 8 adds the mock payment boundary and recovery states.
+Phase 9 supersedes the earlier cache deferral for catalogue metadata only.
+Phase 10 supersedes broker deferral for downstream booking facts, using an outbox
+and idempotent consumers (decisions 17–19). Neither Redis nor Kafka decides seat
+allocation or participates in booking database commits.
 
-**Reason:** The current requirements can be met and tested with one transactional
-database. Adding distributed state would introduce invalidation, duplicate
-delivery, ordering, retry, and recovery decisions. The mock payment workflow
-now exercises some of these concerns without adding network infrastructure.
+**Reason:** Seat allocation still fits one transactional database. Distributed
+components introduce invalidation, duplicate delivery, ordering, retry, and
+recovery decisions; each phase adds a specific tested boundary while keeping the
+booking invariant in PostgreSQL.
 
-**Future direction:** Kafka could support notifications or analytics using a
-transactional outbox and idempotent consumers. Those remain proposals, not
-installed components. Redis catalogue evidence is in [PERFORMANCE.md](PERFORMANCE.md);
-correctness and failure-testing limits are in [TESTING.md](TESTING.md).
+**Current evidence:** Kafka notification/analytics behavior and recovery are in
+[MESSAGING.md](MESSAGING.md). Redis catalogue evidence is in
+[PERFORMANCE.md](PERFORMANCE.md); correctness and failure-testing limits are in
+[TESTING.md](TESTING.md). Service extraction and real providers remain future work.
 
 ## 10. Use Spring Security with short-lived JWTs and owner-scoped queries
 
@@ -416,3 +418,62 @@ invalidation. HTTP/CDN caching would need a separate public cache-control policy
 Spring Security's existing no-store headers are retained. Redis locks or inventory
 ownership would add a second source of truth. None is introduced. The reproducible
 ABBA k6 comparison measures one workload; it is not a capacity or SLA claim.
+
+
+## 17. Use a transactional outbox for booking-confirmed facts
+
+**Decision:** Add one unique outbox record in the exact PostgreSQL transaction
+that confirms a paid booking. Publish only after a short leased claim commits.
+PostgreSQL remains the authoritative booking ledger; Kafka is downstream.
+
+**Reason:** Publishing first can emit a booking that later rolls back; publishing
+after commit without a durable outbox can lose the event on a crash. An in-process
+AFTER_COMMIT callback alone cannot close that failure window. Database/Kafka XA
+or a distributed transaction is unnecessary for the requested asynchronous effects.
+The existing catalogue's best-effort invalidation has a different, TTL-bounded
+consistency requirement and remains unchanged.
+
+**Trade-offs:** Polling adds publication delay, SQL load, and a growing outbox.
+SKIP LOCKED plus database-time leases supports concurrent publishers without
+holding row locks during broker waits. A fencing token prevents old completions
+from overwriting newer claims. No permanent retry limit discards unpublished facts;
+backoff is capped. CDC/Debezium could replace polling later, with added operations.
+
+## 18. Accept duplicate transport; make database consumers idempotent
+
+**Decision:** Use booking ID as the partition key and separate notification and
+analytics groups. Each consumer commits its event marker and effect in one
+READ_COMMITTED transaction, then Spring Kafka commits the record offset. Producer
+idempotence and `acks=all` are enabled, but no cross-system exactly-once claim is made.
+
+**Reason:** A crash after Kafka acceptance/before outbox update causes resend; a
+crash after consumer commit/before offset commit causes redelivery. Durable UUID
+markers and canonical payload hashes protect both effects. A unique booking guard
+also catches accidental new identities for the same confirmation. Insertion
+handles conflicts across both unique indexes before checking the committed marker
+and hash; targeting only the event-ID key can reject an identical concurrent
+delivery at the other unique index. A real email
+provider would need its own idempotency/recovery boundary; this phase persists a
+mock delivery only and does not justify another Strategy abstraction.
+
+**Trade-offs:** Deduplication history consumes storage and cannot be pruned without
+a replay-retention policy. The analytics singleton is a write serialization point.
+Projection reads are eventually consistent; booking success does not imply that
+both consumers have caught up. Broker partitions and retention need operational
+planning, and multiple publishers do not create a global event order.
+
+## 19. Bound consumer retries and preserve poison records in a DLT
+
+**Decision:** Malformed/schema/integrity errors go directly to the DLT; transient
+failures get three retries with capped exponential backoff. Commit past a failed
+record only after DLT publication is acknowledged. Preserve raw bytes and diagnostic
+headers, including the originating group. Source size limits leave room for DLT
+headers. Expose metrics to ADMIN only; keep booking readiness independent of Kafka.
+
+**Trade-offs:** DLT unavailability must pause progress instead of silently dropping
+data. DLT publication itself can duplicate after uncertain acknowledgments.
+Authorized manual replay keeps the original event ID; automatic replay, alerts,
+retention cleanup, broker ACL/TLS provisioning, and real email remain future work.
+Local single-node KRaft and same-process concurrency tests do not certify HA or
+production readiness. See [MESSAGING.md](MESSAGING.md) for failure boundaries,
+rollout constraints, and operational recovery.
