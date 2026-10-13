@@ -1,0 +1,26 @@
+{
+  "phase": 11,
+  "utc": "2026-10-13T13:18:07.355007+00:00",
+  "passed": 1,
+  "failed": 0,
+  "skipped": 0,
+  "selected_cases": [
+    "payment_interrupted_without_proxy_replay"
+  ],
+  "tests": [
+    {
+      "case": "payment_interrupted_without_proxy_replay",
+      "status": "passed",
+      "details": {
+        "killed_during_payment": "app-b",
+        "failed_post_status": 502,
+        "upstream_attempt": "172.18.0.6:8080",
+        "payments_before_explicit_retry": 0,
+        "explicit_retry_status": 201,
+        "same_key_repeat_status": 200
+      },
+      "seconds": 31.021
+    }
+  ],
+  "pool_per_instance": 60
+}

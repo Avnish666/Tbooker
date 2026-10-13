@@ -1,4 +1,4 @@
-# Authentication and authorization — Phases 6–10
+# Authentication and authorization — Phases 6–11
 
 The application authenticates local accounts with BCrypt and issues short-lived
 JWT bearer tokens. Spring Security protects booking routes and checks roles;
@@ -245,3 +245,24 @@ Real providers would require authenticated notifications, independent verificati
 secret management, timeouts, reconciliation/refund procedures, and operational review.
 The default-deny rule rejects public status mutation/callback paths; there is no
 endpoint for a client to turn a deliberately PENDING mock receipt into SUCCESS.
+
+## Phase 11 edge and replica trust
+
+Both JVMs share the JWT key, issuer, and audience; no session affinity or shared
+session database is introduced. PostgreSQL owner predicates remain unchanged.
+The scaled Compose stack publishes only NGINX on loopback. App/database/cache/
+broker ports stay inside the Docker network; administrators of that network are
+trusted. Each app is non-root, read-only except `/tmp`, and drops capabilities.
+
+NGINX overwrites client forwarding headers; Spring trusts forwarding only in the
+scaled container configuration. This assumes requests reach the apps through that
+edge. Access logs omit JWTs, bodies, and query strings. The diagnostic
+`X-Tbooker-Upstream` header exposes an internal peer address and should be removed
+at a public edge. Per-instance metrics still require ADMIN; never expose direct
+unauthenticated metrics to compensate for load-balanced counters.
+
+Automatic upstream retry is disabled, including writes. A timeout can leave an
+ambiguous commit: retry a payment using its original key or inspect the existing
+reservation; a new hold request is not generally retry-safe. TLS, rate limiting,
+network policies, Redis authentication, broker ACL/SASL, token revocation, and key
+rotation remain future operational work. See [SCALING.md](SCALING.md).

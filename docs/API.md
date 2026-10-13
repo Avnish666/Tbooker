@@ -493,3 +493,17 @@ database. Use the readiness group for routing booking traffic. Disabling messagi
 reports its connectivity component as UP/disabled and still records outbox rows.
 The Kafka event contract, consumer group names, and replay procedure are documented
 in [MESSAGING.md](MESSAGING.md); they are internal infrastructure contracts.
+
+## Phase 11 load-balanced deployment
+
+Business routes, authentication, and DTOs are unchanged. The local scaled stack
+exposes them through NGINX at `127.0.0.1:8080` (override `LB_PORT`). Its diagnostic
+`X-Tbooker-Upstream` response header identifies the selected app container.
+`/nginx-health` is an edge-only probe; it does not establish app/database readiness.
+
+A backend crash or restart can produce NGINX 502/503/504 responses, potentially
+with HTML bodies rather than Spring Problem Details. NGINX makes only one upstream
+attempt per request. Do not assume a timeout means a write rolled back. Reuse the
+original payment idempotency key and reservation ID for supported recovery;
+hold creation has no general retry key. Metrics through NGINX may reach either
+replica; use authorized direct internal collection for per-instance counters.

@@ -1,6 +1,6 @@
 # High-level design
 
-This document describes the implemented backend through Phase 10. Proposed
+This document describes the implemented backend through Phase 11. Proposed
 extensions are explicitly marked as future work. See [LLD](LLD.md) for classes,
 [database design](DATABASE.md) for constraints, and [API](API.md) for contracts.
 
@@ -35,10 +35,14 @@ responsibilities separated into services. The current code is organized by
 technical layer; domain module boundaries are not enforced by separate modules
 or an architecture framework.
 
+The component diagram expands one replica. In scaled mode, NGINX selects
+`app-a` or `app-b` before Spring Security; both run this same object graph.
+See the [deployment diagram](SCALING.md#deployment-and-request-path).
+
 ```mermaid
 flowchart LR
     Client[HTTP client] --> Security[Spring Security and JWT validation]
-    subgraph App[Single Spring Boot application]
+    subgraph App[Inside each Spring Boot replica]
         Security --> Controllers[Auth, catalogue, booking, reservation and payment controllers]
         Controllers --> Catalogue[ShowCatalogueService and CatalogueMetadataService]
         Catalogue --> Reader[CatalogueReader on miss or seat query]
@@ -83,8 +87,10 @@ flowchart LR
 
 For local development, Docker Compose runs PostgreSQL, Redis, and a single KRaft
 Kafka node; the Java application runs on the host. Publisher, consumers, and
-schedulers remain inside the monolith. There is no application Dockerfile or
-deployed load balancer.
+schedulers remain inside the monolith. The separate `compose.scaled.yaml` workflow
+runs two replicas behind NGINX using the runtime Dockerfile. Both replicas share
+PostgreSQL, Redis, and Kafka. See [SCALING.md](SCALING.md) for the deployment
+diagram, resource budgets, failure boundaries, and monitoring.
 
 ## Main components
 
@@ -251,7 +257,7 @@ multi-node throughput or clock failover is made.
 There is also no rule rejecting bookings for past shows, and scheduling only
 rejects equal start times on the same screen, not overlapping time ranges.
 
-## Scaling considerations — future work
+## Scaling considerations — Phase 11 and future work
 
 Measure query plans, traffic, lock waits, connection usage, and response latency
 before selecting optimizations. Add pagination and filters before relying on
@@ -259,10 +265,11 @@ caching to cover unbounded catalogue reads. Tune indexes and bounded timeouts
 using those measurements and define retry/error semantics alongside them.
 
 The database-mediated booking guard does not depend on a Java process lock.
-Multiple application instances could therefore share the same PostgreSQL writer,
-but load balancing, aggregate connection budgeting, migration rollout, and
-multi-instance failure tests would be necessary before claiming that deployment
-is verified. Read replicas could serve appropriately stale catalogue data later;
+Two application containers now share the same PostgreSQL writer behind round-robin
+NGINX, with 20 connections per JVM by default. Local contention and process-failure
+tests exercise this deployment; this is not multi-host or database HA certification.
+Adding replicas adds resource and connection budgets. Read replicas could serve
+appropriately stale catalogue data later;
 booking validation and claims must retain an authoritative write path.
 
 Extract services only when independent ownership, deployment, or scaling needs
@@ -271,9 +278,9 @@ transaction benefits from keeping inventory and bookings in one database.
 
 ## Security considerations
 
-JWT validation is stateless, so future application replicas would not need a
-shared session store. They would need synchronized clocks and the same trusted
-issuer/audience/key configuration. HS256 verification shares signing authority;
+JWT validation is stateless: both deployed replicas use the same trusted
+issuer/audience/key configuration without a session store. Host clocks must remain
+synchronized. HS256 verification shares signing authority;
 separate services may later justify asymmetric keys. Role checks protect routes,
 while owner-scoped repository queries protect individual booking records.
 
@@ -437,5 +444,5 @@ atomic with the hold deadline.
 The mock ledger is in the **same PostgreSQL database**, with separate transactions.
 It models durable failure boundaries, not real independent provider storage,
 network partitions, payment security certification, or production readiness.
-Multiple app instances would share the same database constraints and locks, but
-multi-instance deployment/failover has not been tested.
+Phase 11 exercises these locks and retries across two real JVMs, including
+backend termination/restart. Real payment-network failure remains untested.

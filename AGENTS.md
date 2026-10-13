@@ -188,3 +188,17 @@
 - Existing regressions disable Kafka workers but still exercise outbox capture.
   Keep test cleanup aware of the outbox FK; never add production cascade deletion
   just to simplify fixtures. Do not rewrite applied versioned migrations.
+
+## Phase 11 deployment and verification conventions
+
+- Read `docs/SCALING.md` before changing deployment, proxy, or distributed tests.
+- Preserve the host workflow in `compose.yaml`; scaled deployment is standalone.
+- Build the verified JAR before building its non-root Java runtime image.
+- No session affinity, in-memory allocation locks, or automatic NGINX write replay.
+  Keep `proxy_next_upstream off`; document ambiguous responses and passive health.
+- Budget database connections across replicas; keep metric instance tags bounded.
+- Destructive fault/fixture operations must target only fresh runner-owned Compose
+  projects, ephemeral credentials, and disposable volumes, never developer data.
+- Keep 100-way correctness contention separate from throughput benchmarks. Record
+  expected 409s separately from unexpected failures; preserve raw result evidence.
+- Do not begin Phase 12 or introduce Kubernetes without a new request.

@@ -477,3 +477,41 @@ retention cleanup, broker ACL/TLS provisioning, and real email remain future wor
 Local single-node KRaft and same-process concurrency tests do not certify HA or
 production readiness. See [MESSAGING.md](MESSAGING.md) for failure boundaries,
 rollout constraints, and operational recovery.
+
+## Phase 11 — Replicate the monolith with one authoritative writer
+
+**Decision:** Run the same verified JAR in two non-root Java containers, behind
+NGINX round robin, sharing PostgreSQL, Redis, Kafka, and JWT configuration. Keep
+the original host-development Compose file separate. No schema or booking
+algorithm change is required: inventory-first row locks and database constraints
+already arbitrate across connections from different JVMs.
+
+**Trade-off:** This proves local horizontal application scaling, not HA of the
+single database, broker, cache, or edge. Each new JVM adds a pool and consumers;
+connection budgets and topic partition counts bound scaling. Stateless JWTs avoid
+sticky sessions, but shared symmetric keys require coordinated rotation.
+
+**Decision:** Disable `proxy_next_upstream` for every request. Passive exclusion
+uses one failed transport attempt and a five-second timeout. Docker readiness is
+not an active NGINX health-check feed. A caller may see 502/503/504 during failure
+or restart. Connection waits use a one-second timeout; upstream read/send idle
+timeouts are twenty seconds. Neither timeout proves that a write rolled back.
+
+**Trade-off:** Healthy peers serve subsequent traffic, but the failed request is
+not transparently retried. Automatic write replay could duplicate a hold or hide
+an ambiguous payment result. Payment retries must reuse the owner's original key;
+confirmation retries use the reservation ID. Hold creation still lacks a recovery
+key. Public deployment needs TLS, stronger availability controls, and safe client
+retry policies.
+
+**Decision:** Reuse PostgreSQL SKIP LOCKED expiry batches, fenced outbox leases,
+and durable projection markers for background workers. Redis/Kafka only need to
+be started in Compose dependencies; PostgreSQL must be healthy. Optional service
+failure must not prevent explicit restart of a database-ready backend.
+
+**Decision:** Use a separate disposable Compose runner for real JVM termination
+and load tests. Synthetic test JWTs use ephemeral signing keys and the real
+resource-server filter chain. ABBA benchmark repetitions share infrastructure,
+fixtures, workload, and per-replica quotas; report added resources and expected
+409s explicitly. Instance-tagged metrics and Docker samples locate pressure;
+short local measurements are not production capacity estimates.

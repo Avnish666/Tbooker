@@ -119,7 +119,8 @@ No automatic refund, hold renewal, or confirmed-booking cancellation exists.
   confirmation. Expired/cancelled/other-payment conflicts become reconciliation.
   No automatic reconciliation worker or operator HTTP/CLI is installed.
 - PostgreSQL locks/constraints work across instances sharing one writer, but
-  deployment/failover/real network gateway tests have not been performed.
+  Phase 11 exercises local two-JVM deployment and restart. Real network gateway
+  and multi-host/database failover tests have not been performed.
 - No explicit lock/statement timeouts, hold quotas, past-show cutoff, or history
   pagination are configured. Privileged direct SQL can still violate cross-table
   business facts; constraints do not authenticate a provider.

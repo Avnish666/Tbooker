@@ -235,5 +235,7 @@ for recovery planning.
 
 Tests exercise real Kafka/PostgreSQL, publisher recreation and durable crash
 boundaries, concurrent publisher objects, SQL failures, and broker pauses. They
-do not kill JVMs/hosts or verify a multi-host HA deployment. No throughput or
-exactly-once external-effect claim is made. See [TESTING.md](TESTING.md).
+are supplemented in Phase 11 by a real publisher SIGKILL after acknowledgment
+and two-JVM consumer-group checks. Multi-host HA remains unverified. Phase 11
+benchmarks include active messaging workers but do not isolate Kafka capacity.
+No exactly-once external-effect claim is made. See [TESTING.md](TESTING.md).

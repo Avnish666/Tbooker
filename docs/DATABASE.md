@@ -490,3 +490,12 @@ binaries; old code cannot participate in outbox capture. Repeated migrations do
 not reset counts or markers. Current migration version is 7; historical V3–V6
 upgrade tests remain targeted at their original versions. No retention cleanup
 is implemented; see [MESSAGING.md](MESSAGING.md) for operational consequences.
+
+## Phase 11 shared writer
+
+No new migration or table is introduced. Both app containers use the same schema,
+Flyway history, inventory rows, leases, and deduplication constraints. Default
+Hikari capacity is 20 per JVM (40 combined); the local PostgreSQL limit is 160.
+The 100-contender correctness runner uses 60 per JVM to force actual simultaneous
+row-lock waiters. Benchmarks retain the default 20. Extra pools increase database
+pressure; they do not increase ownership capacity for a hot seat.

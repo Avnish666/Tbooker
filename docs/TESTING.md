@@ -2,7 +2,7 @@
 
 The current suite verifies Phases 1–10, including payment-gated bookings, Redis
 catalogue caching, and Kafka booking events. Historical phase results are retained
-below; the final section records Phase 10 verification. Database/concurrency tests
+below; later sections record Phase 10 and Phase 11 verification. Database/concurrency tests
 use PostgreSQL Testcontainers; cache and messaging tests additionally use isolated
 Redis and Kafka containers respectively.
 
@@ -200,13 +200,14 @@ penetration test, throughput benchmark, or failover certification.
 - JWT identity and ownership are now verified. Token revocation/refresh, rate
   limiting, email verification, password reset, and legacy enrollment are absent;
   existing tokens retain their roles until expiry. See [SECURITY.md](SECURITY.md).
-- Tests use one application context at a time and disposable database instances.
+- The Maven tests use one application context at a time and disposable databases.
   Phase 10 recreates publisher objects at durable crash boundaries, runs competing
   publisher objects, and pauses real brokers; it does not kill JVMs or verify a
   multi-host deployment, database failover, or production traffic. The 24-connection
   test setting is not a production pool sizing recommendation or a benchmark.
 
-The remaining operational limitations are deferred beyond Phase 10.
+Phase 11 adds deployed two-JVM and real process-failure evidence below; multi-host
+HA and production controls remain future work.
 
 ## Phase 7 verification
 
@@ -402,8 +403,8 @@ concurrency tests still traverse a random-port HTTP server. Fixtures flush only
 the dedicated disposable Redis container. Legacy regression contexts explicitly
 disable optional caching; no database mocks or automatically skipped cases are used.
 
-The suite does not simulate every network failure or verify multiple deployed
-backend instances. In-process invalidation events are not durable, race-driven
+The Phase 9 cache suite does not simulate every network failure or verify
+multiple deployed backend instances; Phase 11 adds separate deployment tests. In-process invalidation events are not durable, race-driven
 metadata staleness remains TTL-bounded, and Redis outages can amplify SQL load.
 Performance evidence is separately recorded in [PERFORMANCE.md](PERFORMANCE.md);
 passing correctness tests is not evidence of production capacity.
@@ -515,3 +516,79 @@ partition. No Kafka throughput/latency benchmark, production HA, real email deli
 retention cleanup, automatic DLT replay, or external exactly-once guarantee is claimed.
 Historical Phase 9 k6 results were not rerun; the catalogue benchmark runner disables
 messaging workers to keep its workload focused.
+
+## Phase 11 verification
+
+Final `bash mvnw clean verify` completed with **251 passed, 0 failures, 0 errors,
+0 skipped** on Java 21, using environment-specific Maven settings/cache arguments.
+This rerun includes all existing reservation/payment/security/cache/messaging,
+Flyway upgrade/repeatability, rollback, and concurrency regressions. The retained
+[Maven class-count report](../verification/results/2026-10-13-maven.json) is derived
+from the final Surefire XML files. No dependency prevented a requested check.
+
+
+The standalone Docker checks in `verification/multi_instance.py` completed on
+2026-10-13: **13 passed, 0 failed, 0 skipped**, executed as the original complete
+12-case suite plus the subsequently added in-flight payment case. These are separate end-to-end cases,
+not additional JUnit methods. The runner started and health-checked NGINX, two
+real app JVMs, PostgreSQL, Redis, and Kafka, then removed only its own resources.
+The [raw report](../verification/results/2026-10-13-multi-instance.json) retains
+HTTP counts, actual PostgreSQL contention, Kafka CLI membership, and failure logs.
+
+| Case | Verified result |
+| --- | --- |
+| Routing, JWT and metrics | Both upstreams; one login JWT accepted by both; metrics 401/403 and instance tags; no internal host ports |
+| 100 contenders | 100 simultaneous database row-lock waiters across both JVMs; one 201 and 99 conflicts; 20 confirmations return one booking |
+| Expiration | Effective expiry, reclaim by another owner, scheduled normalization |
+| Cancellation | Retry does not release another owner's hold; foreign confirmation 404 |
+| Confirmation waits past expiry | Paid confirmation waiting on the lock cannot use a stale deadline |
+| Confirmation commits after deadline | Eligibility before expiry remains valid through commit; cleanup cannot release BOOKED |
+| Concurrent payment results | 20 deliveries converge on one payment and booking |
+| Redis outage | Database fallback, readiness, paid booking succeed |
+| Kafka outage | Paid booking commits while messaging health fails; backlog and both projections recover |
+| Backend crash and restart | Persisted active hold survives; healthy peer remains reachable; no automatic upstream replay |
+| Publisher crash after acknowledgment | Real SIGKILL before PUBLISHED state write; survivor reclaims lease; one notification and two group markers |
+| Consumer groups | Two members in each of two distinct groups; hosts match app containers; all three partitions assigned |
+| Interrupted payment POST | JVM killed while its first payment insert waited; 502 with one upstream, zero persisted payments, explicit retry 201 then repeat 200 |
+
+The backend test observed **19 HTTP 200 and one 504** while a peer was stopped.
+NGINX recorded a timeout *while connecting to upstream*, not a Spring exception.
+During restart it observed **142 HTTP 200 and four 502**. Six same-key payment
+writes returned one 201 and five 200s, with one durable payment/booking and one
+upstream per attempt. These are observed counts, not a promise that every future
+failure has this distribution. Passive failure detection necessarily allows
+failed probes; disabling replay preserves explicit client recovery semantics.
+
+Two earlier failures were verification assumptions: the gateway test excluded
+504, and Kafka 3.9's single-topic `--members --verbose` output omits the topic name.
+The corrected checks require NGINX failure evidence and healthy-peer recovery,
+and cross-check `--members` with topic/partition/consumer IDs from `--offsets`.
+A newly added SQL assertion also initially used the wrong link direction; the
+final runner joins reservations to bookings through `reservation.booking_id`.
+No assertion bypass or booking implementation change was used.
+
+A final focused [in-flight payment test](../verification/results/2026-10-13-payment-no-replay.json)
+blocked the first payment insert with a test-only advisory lock, killed its actual
+serving JVM, and asserted 502 with one upstream and no durable payment/booking.
+Releasing the lock allowed the abandoned transaction to roll back. Only an
+explicit owner/key retry created the confirmed payment (201); another retry
+returned the same payment (200). This proves the failed POST was not silently
+replayed by NGINX; it does not claim every gateway error precedes a commit.
+The current default runner includes all 13 cases.
+
+The correctness runner expands each pool to 60 solely to establish real 100-way
+lock contention (default and benchmark pools are 20 per JVM). SQL failure and
+blocking triggers exist only in the disposable test database. Normal Compose
+uses automatic restart; crash tests override it to keep a killed process stopped
+until the test explicitly restarts it. The final report contains no skipped cases.
+
+Remaining limits: one Docker host, one PostgreSQL writer and one Kafka broker;
+no host/disk/database failover or network-partition certification. Performance
+runs are separate from correctness and documented in [PERFORMANCE.md](PERFORMANCE.md).
+
+The twelve k6 measured runs also met all thresholds: zero unexpected errors,
+matching payment/booking counts, and one hold plus expected conflicts in every
+hot-seat run. These are load runs, not additional JUnit test methods. All 20
+Mermaid diagrams parsed successfully, and local documentation links were checked.
+Docker Compose health/startup/port smoke checks are included in the end-to-end
+runner; there is no invented separate smoke-test count.

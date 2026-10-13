@@ -106,6 +106,16 @@ contracts where stated. See `API.md` for the current contract.
 - Retain Redis, JWT, payment, reservation, and migration regression coverage.
 - Do not claim real email, cross-system exactly-once, or production HA readiness.
 
+## Phase 11 — Horizontal scaling and failure verification (implemented)
+
+- Run two Java containers behind NGINX with shared PostgreSQL, Redis, and Kafka.
+- Preserve JWT ownership and database allocation/worker coordination across JVMs.
+- Disable automatic request replay; document passive health and timeout behavior.
+- Test 100 real HTTP contenders, expiration, retries, optional-service outages,
+  backend restart, publisher SIGKILL after acknowledgment, and both consumer groups.
+- Compare one/two JVMs with equivalent k6 workloads and per-instance metrics.
+- See TESTING.md and PERFORMANCE.md for executed results and limitations.
+
 ## Future — Catalogue administration and scheduling
 
 - Add validated write use cases for catalogues and venue layouts when requested.
@@ -145,13 +155,14 @@ contracts where stated. See `API.md` for the current contract.
 
 ## Future — Delivery and operations
 
-- Add an application Dockerfile, CI build/test pipeline, and deployment setup.
+- Add a CI build/test pipeline and production deployment procedures; the local
+  application Dockerfile and NGINX Compose deployment are implemented.
 - Separate runtime and migration database privileges.
 - Configure secrets, TLS, backups, restoration checks, and migration rollout.
-- Wire the existing health probes into deployment configuration and verify
-  shutdown behavior; add operational runbooks.
+- Extend the local health probes and graceful shutdown configuration to production
+  rollout procedures; verify shutdown during sustained traffic and add runbooks.
 - Publish reproducible performance evidence for the resume project, with
   limitations documented.
 
-Advance one phase at a time. Phase 10 adds Kafka booking projections only; real
+Advance one phase at a time. Phase 11 adds local horizontal deployment and verification; real
 providers, real email, refunds, and confirmed-booking cancellation remain future work.
