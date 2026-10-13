@@ -406,7 +406,7 @@ handling, and the database-enforced show/seat screen invariant.
 ## Build and tests
 
 ```bash
-bash mvnw clean verify
+./mvnw clean verify
 ```
 
 The full suite requires a running Docker daemon. Tests generate a random JWT key;
@@ -467,6 +467,62 @@ Run the packaged application after a successful build:
 java -jar target/Tbooker-0.0.1-SNAPSHOT.jar
 ```
 
+## Continuous integration — Phase 12A
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs the `Maven verify (Java 21)`
+job on pull requests targeting `main` and pushes to `main`. It uses a GitHub-hosted
+Ubuntu 24.04 runner, Temurin Java 21, and the checked-in Maven wrapper:
+
+```bash
+./mvnw clean verify --batch-mode --no-transfer-progress
+```
+
+`actions/setup-java` caches Maven dependencies using the POM and wrapper properties
+as cache inputs. Testcontainers starts disposable PostgreSQL 17, Redis 7.4, and
+Kafka 3.9.1 containers; no Compose stack, GitHub service containers, production
+database, `.env`, or repository secrets are needed. Tests generate their own JWT
+signing key. MockMvc request/response printing is disabled in CI to avoid dumping
+test credentials or bearer tokens on assertion failures. Do not add production
+secrets, shell tracing, or environment dumps to this job.
+
+The workflow has `contents: read` permission, disables persisted checkout
+credentials, and pins actions to immutable commit IDs. It uses `pull_request`,
+not privileged `pull_request_target`. Superseded PR runs are cancelled; a new
+`main` push does not cancel an already-running main job (GitHub can replace an
+older queued run). The job has a 30-minute limit and Maven has 20 minutes, leaving
+time for failure diagnostics. A nonzero Maven exit fails
+the job; test errors are not ignored or automatically retried.
+
+On failure, available Surefire/Failsafe reports are uploaded as
+`test-reports-<run-id>-<attempt>` with seven-day retention. Only report directories
+are uploaded. If setup fails before tests create reports, the upload step warns
+that no reports exist. Runner termination or cancellation can prevent upload.
+The current tests, including classes named `*IntegrationTests`, are run by
+Surefire; the Failsafe path is included for future use, not a claim that another
+suite currently executes.
+
+To reproduce locally, install a Java 21 **JDK**, start a Docker daemon accessible
+to your user, and run `./mvnw clean verify` from the repository root (`mvnw.cmd`
+on Windows). Maven Central and the container image registry must be reachable,
+or dependencies/images must already be cached. Docker must support Linux
+containers and the pause/unpause operations used by outage tests. A missing
+Docker daemon fails integration checks; it does not silently skip them.
+
+A passing CI run means compilation, the Maven unit/integration suite, and JAR
+packaging succeeded for that checkout. Review the test summary for failures and
+skips (the Phase 11 baseline is 251 tests). It does not run the separate Python
+multi-instance suite or k6 benchmarks, deploy the application, or certify
+production security, performance, or availability.
+
+After this change is approved and pushed, open a PR to `main` and verify the
+`CI` run in GitHub Actions: Java 21, successful Docker/container startup, Maven
+counts, and a green `Maven verify (Java 21)` check. Check a subsequent merge/push to
+`main` triggers CI too. Validate failure reporting with a deliberate failing test
+on a disposable branch: the job must be red and expose its report artifact, with
+no credentials in the console/report output. Branch protection requiring this
+check must be configured separately in GitHub settings. Local Maven execution
+and workflow linting are not evidence of a completed GitHub-hosted run.
+
 ## Structure
 
 Under `src/main/java/com/example/Tbooker`:
@@ -499,7 +555,7 @@ Later identity work includes password reset, email verification, and token revoc
 Real provider integration, automated reconciliation, refunds and payment
 operations need a later phase. Redis metadata caching and Kafka booking-event
 processing are implemented. Delivery work still includes
-CI and production deployment/backup procedures. The application Dockerfile and
+production deployment/backup procedures. Phase 12A adds the CI workflow. The application Dockerfile and
 local NGINX deployment are implemented. See the [roadmap](docs/ROADMAP.md).
 
 The legacy immediate-booking endpoint now returns `409`. A hold-creation retry

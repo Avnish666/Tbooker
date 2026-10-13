@@ -116,6 +116,16 @@ contracts where stated. See `API.md` for the current contract.
 - Compare one/two JVMs with equivalent k6 workloads and per-instance metrics.
 - See TESTING.md and PERFORMANCE.md for executed results and limitations.
 
+## Phase 12A — GitHub Actions CI (workflow implemented)
+
+- Verify PRs targeting main and pushes to main with Java 21 and the Maven wrapper.
+- Cache Maven dependencies and run the existing real-container integration suite.
+- Use read-only repository permissions and ephemeral test configuration.
+- Preserve failure status and upload available test reports on failure.
+- GitHub-hosted execution must be confirmed after the workflow is pushed; local
+  verification alone does not establish a passing Actions run.
+- Deployment and benchmark automation are outside this phase.
+
 ## Future — Catalogue administration and scheduling
 
 - Add validated write use cases for catalogues and venue layouts when requested.
@@ -155,8 +165,8 @@ contracts where stated. See `API.md` for the current contract.
 
 ## Future — Delivery and operations
 
-- Add a CI build/test pipeline and production deployment procedures; the local
-  application Dockerfile and NGINX Compose deployment are implemented.
+- Configure production deployment procedures; the CI workflow, local application
+  Dockerfile, and NGINX Compose deployment are implemented.
 - Separate runtime and migration database privileges.
 - Configure secrets, TLS, backups, restoration checks, and migration rollout.
 - Extend the local health probes and graceful shutdown configuration to production
@@ -164,5 +174,5 @@ contracts where stated. See `API.md` for the current contract.
 - Publish reproducible performance evidence for the resume project, with
   limitations documented.
 
-Advance one phase at a time. Phase 11 adds local horizontal deployment and verification; real
+Advance one phase at a time. Phase 12A adds CI only; real
 providers, real email, refunds, and confirmed-booking cancellation remain future work.
