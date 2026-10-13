@@ -1,6 +1,6 @@
 # High-level design
 
-This document describes the implemented backend through Phase 8. Proposed
+This document describes the implemented backend through Phase 9. Proposed
 extensions are explicitly marked as future work. See [LLD](LLD.md) for classes,
 [database design](DATABASE.md) for constraints, and [API](API.md) for contracts.
 
@@ -23,13 +23,14 @@ confirmed-booking cancellation, catalogue administration, search, filtering, or
 pagination. ADMIN authorization is configured for future catalogue mutations,
 but no mutation handlers exist. Public deployment also needs the security and
 operational controls described in [SECURITY.md](SECURITY.md).
-No throughput, latency, availability SLA, or capacity target has been measured
-or established in this project.
+Local catalogue throughput/latency measurements and their workload limits are
+recorded in [PERFORMANCE.md](PERFORMANCE.md). No production availability SLA or
+capacity target has been established.
 
 ## Current architecture
 
 Tbooker is one Spring Boot application, one Maven module, and one PostgreSQL
-database. It follows a modular monolith direction, with catalogue and booking
+database plus an optional Redis metadata cache. It follows a modular monolith direction, with catalogue and booking
 responsibilities separated into services. The current code is organized by
 technical layer; domain module boundaries are not enforced by separate modules
 or an architecture framework.
@@ -39,7 +40,10 @@ flowchart LR
     Client[HTTP client] --> Security[Spring Security and JWT validation]
     subgraph App[Single Spring Boot application]
         Security --> Controllers[Auth, catalogue, booking, reservation and payment controllers]
-        Controllers --> Services[Auth, catalogue, booking and reservation services]
+        Controllers --> Catalogue[ShowCatalogueService and CatalogueMetadataService]
+        Catalogue --> Reader[CatalogueReader on miss or seat query]
+        Reader --> Repositories
+        Controllers --> Services[Auth, booking and reservation services]
         Controllers --> Payments[PaymentService - no application transaction]
         Payments --> Tx[PaymentTransactions]
         Payments --> Processor[PaymentResultProcessor]
@@ -62,15 +66,16 @@ flowchart LR
         Flyway[Flyway at startup]
     end
     Security --> Health
+    Catalogue --> Redis[(Redis DTO caches)]
     Persistence --> DB[(PostgreSQL)]
     Mock --> DB
     Flyway --> DB
     Health -. Actuator database health .-> DB
 ```
 
-For local development, Docker Compose runs PostgreSQL only; the Java application
-runs on the host. There is no application Dockerfile, deployed load balancer,
-cache, message broker, or separate worker in the repository.
+For local development, Docker Compose runs PostgreSQL and Redis; the Java
+application runs on the host. There is no application Dockerfile, deployed load
+balancer, message broker, or separate worker in the repository.
 
 ## Main components
 
@@ -79,7 +84,10 @@ cache, message broker, or separate worker in the repository.
 | Spring MVC controllers | Bind paths and JSON, validate inputs, return DTOs and HTTP statuses. |
 | Spring Security | Validate bearer tokens, create the principal, and apply public/USER/ADMIN route rules. |
 | `AuthService` / `TokenService` | Register BCrypt credentials, verify login, and issue short-lived signed JWTs. |
-| `ShowCatalogueService` | Read shows and inventory in read-only transactions; build response records. |
+| `ShowCatalogueService` / `CatalogueMetadataService` | Cache public metadata DTOs through Spring Cache; delegate misses and uncached inventory. |
+| `CatalogueReader` | Read/map database entities in short read-only transactions. |
+| `CatalogueChangeListener` / `CatalogueCacheInvalidator` | Publish JPA lifecycle events and evict affected metadata after commit. |
+| `CatalogueCacheErrors` | Observe cache failures and allow database fallback. |
 | `BookingService` | Read own bookings; reject the retired immediate-booking write path with `409`. |
 | Spring Data repositories | Fetch catalogue data, execute the conditional SQL update, and persist bookings. |
 | `ReservationService` | Create, view, confirm, and cancel owner-scoped reservations. |
@@ -98,11 +106,13 @@ Entity graphs fetch the relationships required by catalogue responses.
 
 ## Request flows
 
-For a catalogue request, the controller calls `ShowCatalogueService`, which
-reads through repositories and maps entities to records before its transaction
-ends. Show lists are ordered by start time and ID; seat lists are ordered by seat
-number and ID. Lists are unpaged. A returned availability value is a snapshot,
-not a reservation or a guarantee that a later booking will succeed.
+For show/movie/theatre metadata, the controller calls a cache-annotated service.
+A Redis hit returns the DTO without a database transaction. On a miss or cache
+failure, `CatalogueReader` reads repositories and constructs DTOs before its
+short transaction ends; Spring then caches the successful result. Show lists
+are ordered by start time and ID, movie/theatre lists by ID. Lists are unpaged.
+The seat route always queries PostgreSQL and orders by seat number and ID; its
+expiry-aware snapshot is not a reservation or a guarantee of allocation.
 
 For booking creation, Spring Security validates the token and the controller
 uses its subject as the owner. The client creates a hold with `showSeatId`, then
@@ -259,14 +269,70 @@ implemented. TLS termination, login abuse controls, secret management, and audit
 operations are required deployment work. See [SECURITY.md](SECURITY.md) for the
 filter chain, key configuration, and explicit limitations.
 
-## Redis and Kafka — proposed, not implemented
+## Redis catalogue cache
 
-**Redis:** A future cache could serve frequently read movie, theatre, and show
-metadata. It would need bounded TTLs, invalidation rules, and a database fallback.
-Cached seat availability can become stale immediately; PostgreSQL's conditional
-claim and constraints must remain authoritative. Holds already use PostgreSQL
-ownership, expiry timestamps, and transactions; introducing Redis must not create
-a second inventory authority. There are currently no cache clients or Redis locks.
+Redis provides a shared, disposable cache across application instances. It stores
+public DTOs only: no JPA entities, authentication state, user records, payments,
+bookings, reservations, or seat availability. PostgreSQL remains authoritative.
+This is cache-aside with eventual consistency for catalogue metadata; it is not
+a distributed transaction or a linearizable read model.
+
+| Cache | Key suffix | Default TTL | Reason |
+| --- | --- | --- | --- |
+| `movies`, `theatres` | `all` | 5 minutes | Read-heavy aggregate metadata with fewer invalidation opportunities. |
+| `movie`, `theatre` | decimal ID | 10 minutes | Slowly changing descriptive data. |
+| `shows` | `all` | 30 seconds | Broad aggregate, more likely to change. |
+| `show` | decimal ID | 1 minute | Schedule metadata changes need a shorter stale window. |
+
+Keys start with `tbooker:catalogue:v1:<cache>::`; bump the version when incompatible
+DTO schemas change. Each cache uses an explicit Jackson DTO/list type, including
+UTC `Instant` values, with no polymorphic class names or Java serialization.
+TTLs are configurable, positive, and capped at one day; hits do not renew them.
+These initial TTL choices are trade-offs, not measured freshness requirements.
+Missing resources/errors are not cached. Empty lists are cached.
+
+JPA insert/update/delete callbacks on Movie, Theatre, Screen, and MovieShow publish
+an in-process `CatalogueChanged` event during the write transaction. Its
+`AFTER_COMMIT` listener evicts the affected movie/theatre detail and list, the
+aggregate show list, and only related show details. A fresh short read transaction
+finds affected show IDs; unrelated details remain cached. Rollback produces no
+invalidation. Calls made inside an existing database transaction bypass the cache
+so they cannot serve cached pre-write state or publish uncommitted data. There
+are no new catalogue write endpoints; this wiring covers JPA-based changes.
+
+Native SQL, bulk JPQL, and Flyway bypass entity callbacks. Such writers can
+publish the explicit change event inside their transaction or rely on expiry.
+The event is not durable: a crash after commit, failed eviction, or a racing old
+reader repopulating after eviction can leave stale metadata until its finite TTL
+expires (measured from the last cache fill, not strictly from database commit).
+No scheduler is needed for Redis TTL expiry. Redis is never used as a seat lock.
+
+Cache get/put/evict failures, including malformed cached JSON, log a warning and
+increment Micrometer `catalogue.cache.errors` counters tagged by cache/operation.
+Counters are registered in-process; no metrics HTTP endpoint or exporter is
+configured in this phase. Only health remains publicly exposed from Actuator.
+Reads fall back to the existing database path; cache failure never means a domain
+write succeeded. Connect and command timeouts default to 200 ms. A miss during an
+outage can incur both get and put timeouts. There is no circuit breaker or miss
+coalescing, so widespread cache failure increases database pressure and logs.
+Actuator readiness checks PostgreSQL, not Redis. Cached reads do not imply the
+application is ready while its authoritative database is down.
+
+Availability is deliberately uncached. Five-minute holds can expire while cleanup
+is delayed, so the public query evaluates persisted expiry against database time.
+Every allocation still locks inventory, checks database time after the lock, and
+uses conditional updates and constraints. Cache staleness cannot grant a seat.
+
+Use a dedicated Redis per environment. Local Compose binds loopback, disables
+persistence, and limits memory to 128 MiB with `allkeys-lru`; early eviction simply
+causes a miss. Managed deployments still need network isolation, ACL/TLS settings,
+monitoring, and capacity planning. Redis loss is recoverable through database reads.
+An unpaged list can still exhaust memory/CPU; caching does not fix payload size.
+After-commit dependency lookups need an additional database connection while the
+writer's resources are being released; future write-heavy administration must
+budget the connection pool accordingly.
+
+## Kafka — future work
 
 **Kafka:** Future notifications or analytics could consume booking events after
 commit. A transactional outbox would insert an event in the same database

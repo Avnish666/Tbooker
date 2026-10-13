@@ -1,6 +1,8 @@
 package com.example.Tbooker.entity;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.EntityListeners;
+import com.example.Tbooker.cache.CatalogueChangeListener;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -8,6 +10,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 @Entity
+@EntityListeners(CatalogueChangeListener.class)
 @Table(name = "theatres", schema = "tbooker")
 public class Theatre {
 

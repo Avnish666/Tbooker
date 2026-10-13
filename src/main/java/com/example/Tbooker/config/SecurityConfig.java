@@ -118,6 +118,8 @@ public class SecurityConfig {
 						.requestMatchers("/api/v1/health", "/actuator/health", "/actuator/health/**").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/shows", "/api/shows/*", "/api/shows/*/seats").permitAll()
 						.requestMatchers(HttpMethod.HEAD, "/api/shows", "/api/shows/*", "/api/shows/*/seats").permitAll()
+						.requestMatchers(HttpMethod.GET, "/api/movies", "/api/movies/*", "/api/theatres", "/api/theatres/*").permitAll()
+						.requestMatchers(HttpMethod.HEAD, "/api/movies", "/api/movies/*", "/api/theatres", "/api/theatres/*").permitAll()
 						.requestMatchers(HttpMethod.POST, "/api/shows/*/bookings").hasAnyRole("USER", "ADMIN")
 						.requestMatchers(HttpMethod.POST, "/api/shows/*/reservations", "/api/reservations/*/confirmation").hasAnyRole("USER", "ADMIN")
 						.requestMatchers(HttpMethod.GET, "/api/reservations/*", "/api/reservations/*/booking", "/api/payments", "/api/payments/*").hasAnyRole("USER", "ADMIN")

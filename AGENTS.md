@@ -132,8 +132,9 @@
 
 ## Phase 8 payment conventions
 
-- Mock payments are authorized in Phase 8; real gateways, Redis, Kafka, refunds,
-  and confirmed-booking cancellation are not implemented.
+- Mock payments are authorized in Phase 8; Phase 9 additionally permits Redis
+  catalogue caching. Real gateways, Kafka, refunds, and confirmed-booking
+  cancellation are not implemented.
 - Read the payment sections of HLD, LLD, DATABASE, API, and DECISIONS before edits.
 - Use injected PaymentStrategy implementations and the Spring-managed registry.
   Gateway orchestration must remain outside application transactions (NEVER).
@@ -150,3 +151,19 @@
 - Historical confirmed bookings may have no payment; do not fabricate one.
 - Tests must retain the Phase 1–7 regression cases through the paid workflow and
   exercise real PostgreSQL contention, rollback, duplicate/stale results, and upgrades.
+
+
+## Phase 9 cache conventions
+
+- Redis caches only public movie/theatre/show DTO metadata. Never cache inventory
+  for allocation or put reservation/payment/booking/authentication state in Redis.
+- Read `docs/HLD.md` and `docs/PERFORMANCE.md` before changing the cache policy.
+- Preserve the cache facade / transactional reader separation: hits avoid database
+  transactions, and callers already in a transaction bypass the cache entirely.
+- Use explicit cache names, typed JSON, versioned keys, and finite validated TTLs.
+- Invalidate affected entries only after commit. JPA lifecycle events cover entity
+  writes; bulk/native SQL writers need an explicit event or accept TTL staleness.
+- Cache failure must fall back to PostgreSQL and remain observable. Do not swallow
+  domain/database exceptions or make readiness/allocation depend on Redis.
+- Keep Redis tests isolated in disposable containers. Run the full suite and use
+  the k6 comparison for performance claims; never equate local RPS with capacity.

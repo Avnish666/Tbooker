@@ -2,57 +2,22 @@ package com.example.Tbooker.service;
 
 import com.example.Tbooker.dto.ShowResponse;
 import com.example.Tbooker.dto.ShowSeatResponse;
-import com.example.Tbooker.entity.MovieShow;
-import com.example.Tbooker.entity.ShowSeatStatus;
-import com.example.Tbooker.exception.ShowNotFoundException;
-import com.example.Tbooker.repository.MovieShowRepository;
-import com.example.Tbooker.repository.ShowSeatRepository;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import java.util.List;
+import static com.example.Tbooker.cache.CatalogueCaches.*;
 
 @Service
-@Transactional(readOnly = true)
 public class ShowCatalogueService {
+	private final CatalogueReader reader;
+	public ShowCatalogueService(CatalogueReader reader) { this.reader = reader; }
 
-	private final MovieShowRepository movieShowRepository;
-	private final ShowSeatRepository showSeatRepository;
+	@Cacheable(cacheNames = SHOWS, key = "'all'", condition = OUTSIDE_TRANSACTION)
+	public List<ShowResponse> getShows() { return reader.getShows(); }
 
-	public ShowCatalogueService(MovieShowRepository movieShowRepository, ShowSeatRepository showSeatRepository) {
-		this.movieShowRepository = movieShowRepository;
-		this.showSeatRepository = showSeatRepository;
-	}
+	@Cacheable(cacheNames = SHOW, key = "#p0", condition = OUTSIDE_TRANSACTION)
+	public ShowResponse getShow(Long showId) { return reader.getShow(showId); }
 
-	public List<ShowResponse> getShows() {
-		return movieShowRepository.findAllByOrderByStartTimeAscIdAsc().stream()
-				.map(this::toResponse)
-				.toList();
-	}
-
-	public ShowResponse getShow(Long showId) {
-		return movieShowRepository.findById(showId)
-				.map(this::toResponse)
-				.orElseThrow(() -> new ShowNotFoundException(showId));
-	}
-
-	public List<ShowSeatResponse> getShowSeats(Long showId) {
-		if (!movieShowRepository.existsById(showId)) {
-			throw new ShowNotFoundException(showId);
-		}
-		return showSeatRepository.findAvailabilityByShowId(showId).stream()
-				.map(showSeat -> new ShowSeatResponse(showSeat.getId(), showId,
-						showSeat.getSeatId(), showSeat.getSeatNumber(), ShowSeatStatus.valueOf(showSeat.getStatus())))
-				.toList();
-	}
-
-	private ShowResponse toResponse(MovieShow show) {
-		var movie = show.getMovie();
-		var screen = show.getScreen();
-		var theatre = screen.getTheatre();
-		return new ShowResponse(show.getId(), movie.getId(), movie.getTitle(), movie.getDurationMinutes(),
-				screen.getId(), screen.getName(), theatre.getId(), theatre.getName(), theatre.getCity(),
-				show.getStartTime());
-	}
-
+	// Expiry-aware inventory is deliberately never cached.
+	public List<ShowSeatResponse> getShowSeats(Long showId) { return reader.getShowSeats(showId); }
 }
