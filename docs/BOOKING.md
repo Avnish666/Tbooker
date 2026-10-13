@@ -1,151 +1,111 @@
-# Immediate confirmed bookings
+# Reservations, verified payments, and permanent bookings
 
-`POST /api/shows/{showId}/bookings` books one show-specific seat for one existing
-authenticated user. The response is `201` with a `CONFIRMED` booking after commit.
-The Phase 3 concurrency design is preserved in Phase 6. JWT authentication now
-establishes identity before the service transaction; there are still no holds,
-cancellation, payment calls, or idempotency keys. See [SECURITY.md](SECURITY.md).
+New bookings follow hold → mock payment → verified confirmation. The legacy
+`POST /api/shows/{showId}/bookings` now returns `409` for otherwise valid creation;
+leaving it enabled would bypass payment. Existing own-booking GETs and historical
+confirmed bookings remain supported. See [API](API.md) for DTOs and examples.
 
-## Request and outcomes
+## Identity and ownership
 
-```json
-{"showSeatId": 5}
-```
+Spring Security validates JWTs before MVC. Controllers derive owner ID from the
+subject and never accept arbitrary userId, payment status, or amount. Reservation,
+payment, and booking detail queries include the owner; foreign IDs return `404`
+including for ADMIN. Payment initiation accepts only method and Idempotency-Key.
 
-Use the `id` from `GET /api/shows/{showId}/seats`, not its physical `seatId`.
-Send `Authorization: Bearer <accessToken>`. `userId` comes from the validated
-principal; including it in the request body is rejected. Own-booking list/detail
-routes are `GET /api/bookings` and `GET /api/bookings/{bookingId}`. Their repository
-queries include the owner ID, including for ADMIN callers; foreign details return
-the same `404` as an absent booking.
+## The race and inventory authority
 
-| Status | Meaning |
-| --- | --- |
-| `201` | Confirmed booking committed; the show seat is now `BOOKED`. |
-| `400` | Missing, malformed, non-positive, fractional, or overflowing IDs; malformed JSON; or an existing show seat belongs to another show. |
-| `401` | Missing or invalid bearer token. |
-| `404` | The show, user, or show seat does not exist. |
-| `409` | The conditional update cannot claim an available seat, or the unique booking constraint rejects a duplicate. |
-| `500` | Unexpected database integrity failure; the transaction rolls back and the response does not expose database internals. |
+A check-then-save algorithm is unsafe: two transactions can both read AVAILABLE
+before either saves. Java synchronization would only coordinate one JVM.
+`SeatInventoryService.lockAndExpire` instead locks `show_seats.id` FOR UPDATE,
+reads PostgreSQL `clock_timestamp()` after waiting, then conditionally expires an
+old hold. `ReservationService.create` changes AVAILABLE to HELD and inserts history
+in the same transaction. Exactly one current hold can win; a losing caller gets
+`409`. The partial unique HELD index independently protects history.
 
-Failures use Problem Details. Validation checks the show, then user, then show
-seat existence and association. Availability is decided by the database update,
-not by the pre-read entity. Repeating a successful request returns `409`, even
-for the same user; request idempotency is future work.
+An expired hold can be replaced even if cleanup is delayed. Five-minute holds
+are persisted timestamps, not five-minute database transactions. Cleanup uses
+bounded SKIP LOCKED batches; every supported mutating workflow uses inventory
+first so competing instances coordinate at PostgreSQL rather than Java memory.
 
-## The race in check-then-save
+## Payment transaction boundaries
 
-Two independent requests can both read `AVAILABLE` before either writes. If both
-then unconditionally save a booking, both can believe they succeeded. A Java
-lock would also protect only one application process. Reading status or adding
-`@Transactional` by itself does not remove this race.
+1. `PaymentTransactions.prepare`: READ_COMMITTED, lock inventory, validate active
+   owned hold, check key and unresolved attempts, insert/replay PENDING, commit.
+2. `PaymentService` selects an injected strategy and calls it outside any
+   application transaction. The mock receipt has a stable provider UUID and
+   commits through `MockGatewayStore` in a separate short transaction.
+3. `PaymentResultProcessor.process`: independently verify the canonical receipt;
+   `PaymentTransactions.recordVerified` locks inventory, checks command identity,
+   reference/version, and commits financial SUCCESS/FAILED/PENDING.
+4. On SUCCESS, `ReservationService.confirmForPayment` starts the separate
+   allocation transaction described below. Failure cannot roll back the already
+   committed financial outcome.
 
-The winning decision is instead made by one PostgreSQL statement:
+NEVER propagation on the orchestrator, processor, and strategies rejects calls
+from an open application transaction. The mock ledger is still on the same
+PostgreSQL server; separate commits are not separate availability domains.
+
+## Atomic confirmation
+
+`ReservationService.confirm` (public API) and `confirmForPayment` (internal)
+serialize through the same seat lock. They reload the owned reservation after
+locking and use database decision time. `confirmLocked` requires persisted SUCCESS
+for the same reservation/owner and an active unexpired hold, then performs:
 
 ```sql
-UPDATE tbooker.show_seats
-SET status = 'BOOKED'
-WHERE id = :showSeatId
-  AND show_id = :showId
-  AND status = 'AVAILABLE';
+UPDATE tbooker.show_seats SET status = 'BOOKED'
+WHERE id = :seatId AND status = 'HELD';
 ```
 
-`BookingService.book` runs at `READ COMMITTED`. An update locks the matching row
-until the transaction ends. If another transaction tries to update that row, it
-waits. When the first transaction commits, PostgreSQL re-evaluates the `WHERE`
-condition against the updated row. Its status is now `BOOKED`, so the waiting
-update affects zero rows and returns `409`. Exactly one affected row permits the
-booking insert. This works across application instances sharing the database.
+One affected row authorizes booking insertion. `BookingRepository.saveAndFlush`
+inserts the CONFIRMED booking; `ReservationRepository.confirm` conditionally links
+booking/payment IDs and changes HELD to CONFIRMED; `PaymentRepository.markConfirmed`
+changes the payment's confirmation state. All four writes commit together.
+A failure at any point restores HELD/no booking while preserving the prior
+financial SUCCESS. Flushing checks constraints but is not a commit.
 
-If the first transaction rolls back instead, its `BOOKED` change disappears.
-The waiting update can then match `AVAILABLE` and proceed. A different seat has
-its own row, so the implementation does not lock an entire show or all bookings.
+The unconditional `uq_bookings_show_seat` remains the final duplicate-booking
+backstop. Composite FKs enforce reservation/booking owner and seat identity, and
+reservation/payment owner and reservation identity. Native writes flush and clear
+JPA state to avoid decisions from entities read before waiting on a lock.
 
-```mermaid
-sequenceDiagram
-    participant A as Request A
-    participant DB as PostgreSQL
-    participant B as Request B
-    A->>DB: UPDATE ... WHERE status = AVAILABLE
-    DB-->>A: 1 row, row lock held
-    B->>DB: UPDATE same row, waits
-    A->>DB: INSERT confirmed booking
-    A->>DB: COMMIT
-    DB-->>B: Recheck predicate, 0 rows
-    Note over A: 201 Created
-    Note over B: 409 Conflict
-```
+A reservation confirmed earlier returns the same booking on retry. Historical
+Phase 7 confirmations can have no payment; they remain historical reads, not a
+new unpaid write path. Concurrent duplicate confirmations cannot create another
+booking. If another payment already confirmed this reservation, a late additional
+SUCCESS is flagged for reconciliation rather than linked to that booking.
 
-## Why one transaction is required
+## Expiration and cancellation races
 
-The seat claim and booking insertion form a single unit of work. Spring's
-transaction interceptor opens the transaction before the service runs and
-commits before returning to the controller. `saveAndFlush` forces insert-time
-constraints to be checked in that transaction. Runtime exceptions escape the
-service and roll back both writes before global error handling runs.
+Eligibility is `expires_at > decisionTime` where time is sampled after the seat
+lock. A confirmer waiting past expiry fails even if the HTTP request arrived
+early. A valid decision may commit after the deadline; cleanup skips its locked
+row and cannot undo the committed booking. Confirmation and expiration cannot
+both win for the same hold. Cancellation can win before confirmation, but can
+never release BOOKED inventory or a replacement user's hold.
 
-Without this boundary, a failed insert could leave a seat permanently marked
-`BOOKED` with no booking. Conversely, committing a booking before its seat change
-would leave inconsistent inventory. There are no external network/payment calls
-inside the transaction, and confirmation does not wait for payment.
+Cancellation/expiry do not undo external money. If payment finishes late,
+confirmation fails and SUCCESS remains durable with RECONCILIATION_REQUIRED.
+No automatic refund, hold renewal, or confirmed-booking cancellation exists.
 
-The native update clears JPA's persistence context so an earlier loaded seat
-does not retain a misleading `AVAILABLE` status. Fresh references by ID are used
-for the new booking. The response contains scalar DTO fields, not JPA entities.
+## Retries, versions, and remaining limits
 
-## Why database constraints remain necessary
+- Owner/key uniqueness binds payment parameters; concurrent identical requests
+  reuse one attempt. A stable gateway UUID deduplicates mock receipts, even when
+  the call executes again. This is not exactly-once external execution.
+- One PENDING attempt per reservation is database-enforced; service checks reject
+  new keys while PENDING/SUCCESS exists. FAILED can retry with a new key while active.
+- Result processing verifies independent provider proof. Old versions are ignored,
+  equal-version contradictions rejected, and SUCCESS never regresses. A newer
+  correction from FAILED to SUCCESS is retained even after another attempt won.
+- SUCCESS/PENDING is recoverable by original-key retry or active reservation
+  confirmation. Expired/cancelled/other-payment conflicts become reconciliation.
+  No automatic reconciliation worker or operator HTTP/CLI is installed.
+- PostgreSQL locks/constraints work across instances sharing one writer, but
+  deployment/failover/real network gateway tests have not been performed.
+- No explicit lock/statement timeouts, hold quotas, past-show cutoff, or history
+  pagination are configured. Privileged direct SQL can still violate cross-table
+  business facts; constraints do not authenticate a provider.
 
-V3 adds `UNIQUE (show_seat_id)` as `uq_bookings_show_seat`. Even if a future code
-path bypasses the conditional update, or someone incorrectly resets inventory,
-the database still rejects a second booking for that show seat. User and show-seat
-foreign keys prevent dangling references; a check constraint restricts booking
-status to `CONFIRMED`. Previous migrations and their checksums are unchanged.
-
-Only PostgreSQL unique violation `23505` for `uq_bookings_show_seat` maps to a
-duplicate-booking `409`. Other integrity failures are logged and return a generic
-`500`; they are not falsely reported as an already-booked seat.
-
-The unique constraint protects booking uniqueness, not every possible
-cross-table inconsistency introduced by direct SQL. There is no trigger requiring
-every `BOOKED` seat to have a booking. The supported write path preserves that
-invariant through its transaction. If data is already inconsistent, an insert
-failure rolls back to its previous state; it does not silently repair it.
-
-The unique constraint is unconditional because cancellation and booking history
-are not implemented yet. A later lifecycle phase must deliberately redesign it
-before allowing a cancelled seat to be booked again.
-
-## Verification
-
-`BookingIntegrationTests` uses real Testcontainers PostgreSQL and has no outer
-test transaction. Every request commits or rolls back independently. It covers:
-
-- Confirmed booking persistence, UTC creation time, and updated catalogue status.
-- Duplicate requests by the same and different users.
-- Missing resources, invalid IDs/bodies, and mismatched show-seat associations.
-- Test-only `BEFORE INSERT` and `AFTER INSERT` triggers that fail after the seat
-  update; neither write persists, and a subsequent retry succeeds.
-- Direct SQL duplicate protection and the unique-constraint fallback when a
-  seat status was incorrectly reset.
-- Two requests blocked on the same PostgreSQL row before releasing the lock;
-  exactly one receives `201`, one receives `409`, and one booking exists.
-- A waiting request succeeding after a competing transaction rolls back.
-- Independent bookings for the same physical seat across different shows.
-- Replaying development seed SQL without undoing a confirmed booking.
-- Repeating Flyway migrations without changing history or any application rows.
-
-The lock tests poll `pg_stat_activity` to establish actual blocked conditional
-updates before releasing the coordinating lock; they do not depend on a lucky
-thread schedule or an arbitrary sleep before sending a second request.
-
-`BookingConcurrencyIntegrationTests` additionally runs a real HTTP server and
-releases 20 distinct users' requests together with `CountDownLatch`. All 20 must
-carry a real signed JWT and reach the database update before a coordinating row
-lock is released. Across
-three isolated repetitions, each race requires one `201`, nineteen `409` responses,
-one confirmed booking, a `BOOKED` seat, and no duplicate bookings.
-
-Run the full suite with `bash mvnw clean verify`, or both booking test classes
-with `bash mvnw -Dtest=BookingIntegrationTests,BookingConcurrencyIntegrationTests test`.
-Docker is required. See [TESTING.md](TESTING.md) for the test protocol, review
-findings, and limits of these results.
+[TESTING.md](TESTING.md) describes actual contention, migration and failure tests;
+[HLD](HLD.md) and [LLD](LLD.md) show states, components, and execution order.

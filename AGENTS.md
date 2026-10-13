@@ -16,6 +16,11 @@
 - Cloud tasks already have isolated checkouts; use the existing checkout rather
   than creating a worktree unless the user explicitly requests one.
 
+- Phase 7 adds PostgreSQL-backed five-minute reservations and scheduled expiry.
+  Read the reservation sections of `HLD.md`, `LLD.md`, `DATABASE.md`, and `API.md`
+  under `docs/` before changing seat allocation. Do not add Redis, Kafka,
+  payments, or confirmed-booking cancellation without a later request.
+
 ## Code conventions
 
 - Follow Controller → Service → Repository layering for domain use cases.
@@ -36,9 +41,19 @@
   currently no mutation handlers or public role-management endpoints.
 - Put business transactions in services. Design database constraints alongside
   use cases; document concurrency and isolation decisions when booking is added.
-- Read `docs/BOOKING.md` before changing booking. Claim availability with the
-  conditional PostgreSQL update and insert the booking in one service transaction.
+- Read `docs/BOOKING.md` before changing booking. After verified payment, claim
+  HELD inventory and insert/link the booking in one service transaction.
   Never replace this with check-then-save, a Java lock, or an unconditional update.
+- Every allocation path locks inventory first through `SeatInventoryService`,
+  then evaluates database `clock_timestamp()` after waiting for that lock.
+  Never use transaction-start time or a stale JPA entity for hold eligibility.
+  Keep reservation identity and ownership immutable, preserve historical rows,
+  and enforce HELD-to-terminal transitions with conditional updates.
+- Expiry correctness must not depend on the scheduler. Claims reclaim old holds,
+  reads expose effective expiry, and cleanup only normalizes persisted state.
+  Preserve retry-safe confirmation and cancellation without releasing a later hold.
+- Keep `uq_reservations_held_seat` as the partial unique hold guard and the
+  reservation/booking composite FK as owner/seat link protection.
 - Keep `uq_bookings_show_seat` as the database backstop and map only that specific
   unique violation to an already-booked conflict. Do not hide other database
   failures as `409`. Never hold a booking transaction open for external payment.
@@ -73,8 +88,9 @@
 - Preserve the requested catalogue routes `/api/shows`, `/api/shows/{showId}`,
   and `/api/shows/{showId}/seats`; health remains at `/api/v1/health`. Do not rename
   routes without an explicit API change. Use consistent HTTP status codes.
-- Book through `POST /api/shows/{showId}/bookings`; use validated request DTOs,
-  response DTOs, and `201`/`400`/`404`/`409` outcomes as documented.
+- Phase 8 booking creation requires a reservation and verified payment. The
+  legacy `POST /api/shows/{showId}/bookings` must keep rejecting new creation with
+  `409`; never restore this unpaid bypass. Use DTOs and documented status codes.
 - Use Spring Problem Details for HTTP errors. Add centralized domain exception
   mappings when domain features require them; do not expose stack traces or
   internal database messages to clients.
@@ -88,6 +104,10 @@
   validate signature handling and the full suite when updating it.
 - Security tests must traverse the real filter chain with signed tokens.
   Generate test-only signing keys at runtime; never use production secrets.
+- Close cached test contexts before class-scoped containers stop so scheduler
+  callbacks cannot access a stopped PostgreSQL instance. Reservation lifecycle
+  tests disable automatic scheduling and invoke cleanup explicitly; a dedicated
+  integration test verifies the actual scheduled callback.
 - Run `bash mvnw clean verify` when practical. Full tests require Docker for
   Testcontainers and must not silently skip database checks when Docker is absent.
 - `bash mvnw -Dtest=HealthControllerTests test` runs only the HTTP slice tests.
@@ -109,3 +129,24 @@
   seat marked `BOOKED` without its booking.
 - Report implemented behavior, changed files, actual test results, limitations,
   and brief design decisions. Stop at the requested phase boundary.
+
+## Phase 8 payment conventions
+
+- Mock payments are authorized in Phase 8; real gateways, Redis, Kafka, refunds,
+  and confirmed-booking cancellation are not implemented.
+- Read the payment sections of HLD, LLD, DATABASE, API, and DECISIONS before edits.
+- Use injected PaymentStrategy implementations and the Spring-managed registry.
+  Gateway orchestration must remain outside application transactions (NEVER).
+- Keep financial outcome persistence separate from booking confirmation. A booking
+  failure must not erase SUCCESS; preserve PENDING/reconciliation recovery state.
+- Only internal independent provider verification can change payment outcome.
+  Never add a client-supplied success/price/owner or an unauthenticated callback.
+- Idempotency is scoped to owner/key and bound to reservation/method. Retain stable
+  provider UUID and price across retries. Do not claim exactly-once external calls.
+- Preserve inventory-first locking, provider version checks, pending-attempt and
+  permanent-booking uniqueness, and composite owner/reservation/payment links.
+- Do not reject real financial facts just to enforce one SUCCESS row; late extra
+  successes require reconciliation and must never create another booking.
+- Historical confirmed bookings may have no payment; do not fabricate one.
+- Tests must retain the Phase 1–7 regression cases through the paid workflow and
+  exercise real PostgreSQL contention, rollback, duplicate/stale results, and upgrades.

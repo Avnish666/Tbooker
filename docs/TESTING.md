@@ -1,32 +1,31 @@
 # Integration and security verification
 
-Phase 4 changed tests and documentation only. Phase 6 adds authentication,
-authorization, owner-scoped booking reads, and V4 while preserving the booking
-algorithm. Historical Phase 4/5 results appear below, followed by the current run.
+The current suite verifies Phases 1–8, including payment-gated bookings. Historical
+Phase 4–7 results are retained below; the final section records the Phase 8 clean
+verification run. All database/concurrency tests use PostgreSQL Testcontainers.
 
 ## Implementation review
 
-Phase 6 first authenticates a real signed JWT and derives the user ID from its
-subject. Request bodies cannot select the owner; existing transaction checks
-then apply unchanged.
+The supported Phase 8 allocation path has these safeguards:
 
-The supported booking path has these safeguards:
+1. JWT authenticates identity; controllers/DTOs cannot select arbitrary owner or
+   payment outcome. Resource and owner-scoped queries validate associations.
+2. All lifecycle mutations lock the show-seat row first at READ_COMMITTED and
+   sample database time after waiting. Conditional updates authorize transitions.
+3. Payment preparation persists owner/key uniqueness, stable provider identity,
+   and server amount. The mock ledger deduplicates the provider operation.
+4. Gateway calls occur outside application transactions. Independent verification
+   persists financial outcome in its own transaction before booking confirmation.
+5. `ReservationService.confirmLocked` checks active owned hold and SUCCESS proof,
+   then changes inventory, inserts booking, and links reservation/payment in one
+   transaction. Failures roll back allocation without erasing financial success.
+6. Permanent booking uniqueness, one-HELD and one-PENDING partial uniqueness, and
+   composite ownership FKs are database backstops. Stale/equal-version contradictory
+   provider results cannot overwrite committed progress.
 
-1. Resource lookups validate the user, show, and show-seat association. They do
-   not authorize booking based on a previously read availability value.
-2. The conditional PostgreSQL update includes the inventory ID, show ID, and
-   `status = 'AVAILABLE'`. Only one affected row authorizes the insert.
-3. `BookingService.book` is invoked through Spring's transaction proxy at
-   `READ COMMITTED`. The row lock is held through the insert and commit; runtime
-   failures roll back the seat update and booking together.
-4. The native update clears the persistence context, avoiding stale managed
-   availability. `saveAndFlush` checks insert constraints before returning.
-5. `uq_bookings_show_seat` independently forbids a second booking for that
-   inventory row. Only that named unique violation maps to `409`; unrelated
-   integrity failures remain server errors.
-
-No double-booking defect was found in this path. The tests exercise these
-guarantees against PostgreSQL rather than inferring them from annotations or mocks.
+Concurrency tests use actual independent HTTP requests/database transactions,
+not in-memory locks or a mocked repository. No double-booking regression was
+observed in the executed suite; this does not prove all possible deployment failures.
 
 ## Twenty-request test
 
@@ -39,11 +38,12 @@ For each repetition:
 - A fixed `ExecutorService` has 20 workers. A ready `CountDownLatch` ensures all
   workers have started, and a start latch releases their HTTP requests together.
 - A coordinating JDBC transaction temporarily locks the target row. The test
-  polls `pg_stat_activity` until all 20 conditional updates are blocked, proving
+  polls `pg_stat_activity` until all 20 inventory lock queries are blocked, proving
   that every request reached PostgreSQL before a winner is allowed to commit.
 - The lock is released, all futures are collected, and every response is checked.
-- Exactly one request must return `201`. All other 19 responses must be `409`
-  Problem Details for the unavailable seat, rather than unrelated server errors
+- Each worker first creates a hold. Exactly one gets `201`, pays through the real
+  mock-payment HTTP API (`201`), and retrieves its booking (`200`). The other 19
+  hold requests must return `409` Problem Details, not unrelated server errors
   or the unique-constraint fallback.
 - Independent database queries require one confirmed booking belonging to the
   winning user, matching the response ID, a `BOOKED` seat, and zero duplicate
@@ -68,8 +68,9 @@ the default sequential JUnit method execution.
 `BookingIntegrationTests` injects failures with test-only PostgreSQL triggers:
 one `BEFORE INSERT` and one `AFTER INSERT`. Both execute after the seat claim;
 the latter executes after a booking row has been inserted. Each request must
-return the expected generic `500`, leave zero bookings and an `AVAILABLE` seat,
-and allow a successful retry after removing the trigger. These expected HTTP
+return the expected generic `500`, leave zero bookings and a `HELD` seat with
+verified SUCCESS payment retained, and allow confirmation retry after removing
+the trigger. Hold creation and payment verification committed before confirmation. These expected HTTP
 errors are assertions in passing tests, not ignored test failures.
 
 Other existing checks cover rollback after a unique-constraint failure and a
@@ -79,8 +80,8 @@ Migration repeatability is checked through `Flyway.migrate()`, not by manually
 rerunning versioned SQL. Both the default and development-profile contexts call
 it three additional times. Every call must execute zero migrations, validate
 successfully, have no pending migrations, and preserve the complete schema
-history. The development check also snapshots all eight application tables
-after confirming a booking and requires every row to remain unchanged. Existing
+history. The development booking check snapshots all ten domain tables plus
+mock receipts after paid confirmation and requires every row to remain unchanged. Existing
 tests separately replay development seed SQL and verify no duplicate data or
 reset booking status.
 
@@ -188,8 +189,8 @@ penetration test, throughput benchmark, or failover certification.
 - The repository does not configure a database lock timeout or statement timeout
   for booking. A long-running competing transaction can make requests wait; the
   connection-acquisition timeout does not bound an already-running SQL update.
-- POST retries are not idempotent. If the commit succeeds but the response is
-  lost, retrying returns `409` rather than recovering the original result.
+- Hold-creation retries have no recovery key. Payment initiation is owner/key
+  idempotent and reservation confirmation recovers the original booking.
 - Foreign keys and uniqueness prevent duplicate/dangling bookings, but direct SQL
   can still make availability disagree with booking rows. The supported service
   transaction preserves consistency; it does not repair existing inconsistencies.
@@ -201,4 +202,143 @@ penetration test, throughput benchmark, or failover certification.
   production traffic. The 24-connection test setting is not a production pool
   sizing recommendation or a throughput/latency benchmark.
 
-The remaining limitations are explicitly deferred beyond Phase 6.
+The remaining operational limitations are deferred beyond Phase 8.
+
+## Phase 7 verification
+
+This records the Phase 7 baseline. In Phase 8 the same lifecycle/concurrency
+assertions run with real verified payment fixtures before confirmation; the old
+direct-booking success case now checks rejection and paid replacement instead.
+
+`ReservationIntegrationTests` disables automatic scheduling and uses PostgreSQL
+through Testcontainers, real signed JWTs, and independent transactions. It covers:
+
+- Five-minute creation and effective public/owner read states.
+- Missing resources, show-seat mismatch, invalid inputs, and owner/expiry injection.
+- Missing, malformed, and expired tokens; foreign USER/ADMIN ownership rejection.
+- Active-hold exclusion of other holds and immediate bookings.
+- Confirmation, repeat/concurrent confirmation, cancellation, and terminal history.
+- Expiration without cleanup, replacement holds, and direct-booking reclamation.
+- 20 HTTP hold contenders coordinated by `ExecutorService`/`CountDownLatch`,
+  all observed waiting on PostgreSQL locks; repeated three times.
+- Hold-versus-direct-booking and cancel-versus-confirm contention.
+- Expiry after a confirmation transaction starts but before it obtains the lock.
+- A confirmation decision before expiry that commits after the deadline;
+  concurrent cleanup skips its row and cannot undo the booking.
+- Cleanup of expired rows, locked-row skipping, and repeat application.
+- Forced AFTER-insert/update database failures rolling back the entire allocation.
+- Hold uniqueness, booking-link owner integrity, V4-to-V5 migration preservation,
+  and repeated Flyway migration calls.
+
+`ReservationCleanupIntegrationTests` enables the actual scheduler with a short
+interval and awaits a committed EXPIRED/AVAILABLE outcome without calling an API
+or the cleanup service itself. Shared test support closes contexts, including
+schedulers and pools, before class-scoped PostgreSQL containers stop.
+
+The reservation concurrency context has 24 database connections for 20 workers,
+a coordinating blocker, and an observer. Fixtures reset only their test container.
+Time-boundary tests use persisted database timestamps; no five-minute sleeps,
+authentication mocks, or substitute database engines are used. The Phase 7 suite retained security, immediate-booking, and catalogue coverage;
+Phase 8 adapts creation cases to the paid workflow and preserves those regressions.
+
+On **2026-10-12**, full Maven `clean verify` completed with **BUILD SUCCESS**:
+
+| Test class | Executed | Failed / errors / skipped |
+| --- | ---: | --- |
+| `ReservationIntegrationTests` | 33 | 0 / 0 / 0 |
+| `ReservationCleanupIntegrationTests` | 1 | 0 / 0 / 0 |
+| `SecurityIntegrationTests` | 42 | 0 / 0 / 0 |
+| `BookingIntegrationTests` | 35 | 0 / 0 / 0 |
+| `BookingConcurrencyIntegrationTests` | 3 | 0 / 0 / 0 |
+| `ShowCatalogueIntegrationTests` | 31 | 0 / 0 / 0 |
+| `TbookerApplicationTests` | 4 | 0 / 0 / 0 |
+| `HealthControllerTests` | 2 | 0 / 0 / 0 |
+| `JwtConfigurationTests` | 8 | 0 / 0 / 0 |
+| **Total** | **159** | **0 / 0 / 0** |
+
+The executable Spring Boot JAR was built. The cloud run used the same setup
+helper, settings file, and writable Maven cache documented above. An initial
+full run found one obsolete assertion treating `HELD` as an invalid state;
+it now tests `UNSUPPORTED`, retaining invalid-state coverage. Scheduler teardown
+was corrected by closing test contexts before stopping containers. The final
+run passed without scheduler callbacks accessing stopped containers.
+
+These are correctness checks on a single application/database setup, not load,
+latency, availability, multi-node failover, or sustained-backlog measurements.
+
+## Phase 8 verification
+
+On **2026-10-13**, the full wrapper `clean verify` completed with **BUILD SUCCESS**
+and built `target/Tbooker-0.0.1-SNAPSHOT.jar`. The cloud environment used Java 21,
+Docker 28.4.0, and real PostgreSQL 17.11 Testcontainers. Exact command:
+
+```bash
+source /workspace/.setup/env.sh
+bash mvnw -s /workspace/.cache/maven/settings.xml \
+  -Dmaven.repo.local=/workspace/.cache/maven/repository clean verify
+```
+
+The environment settings/cache override Maven's read-only default location; it
+is not a change to project dependencies. Normal local setup uses
+`bash mvnw clean verify`. No production credentials are required by the tests.
+
+| Test class | Passed | Failed | Errors | Skipped |
+| --- | ---: | ---: | ---: | ---: |
+| `PaymentIntegrationTests` | 35 | 0 | 0 | 0 |
+| `ReservationIntegrationTests` | 33 | 0 | 0 | 0 |
+| `ReservationCleanupIntegrationTests` | 1 | 0 | 0 | 0 |
+| `SecurityIntegrationTests` | 42 | 0 | 0 | 0 |
+| `BookingIntegrationTests` | 35 | 0 | 0 | 0 |
+| `BookingConcurrencyIntegrationTests` | 3 | 0 | 0 | 0 |
+| `ShowCatalogueIntegrationTests` | 31 | 0 | 0 | 0 |
+| `TbookerApplicationTests` | 4 | 0 | 0 | 0 |
+| `HealthControllerTests` | 2 | 0 | 0 | 0 |
+| `JwtConfigurationTests` | 8 | 0 | 0 | 0 |
+| **Total** | **194** | **0** | **0** | **0** |
+
+All existing Phase 1–7 test classes executed. No tests were unavailable, disabled,
+or skipped. The complete run's Surefire XML is in `target/surefire-reports`;
+cloud build output was captured at `/tmp/tbooker-phase8-clean-verify.log` (local
+artifact, not committed). Expected PostgreSQL trigger errors appear in passing
+rollback tests; they are deliberately asserted failures, not ignored test errors.
+
+Payment tests verify:
+
+- Verified success, configured Card failure, and owner-only status/history/booking reads.
+- No unpaid confirmation or legacy creation bypass, no client SUCCESS/owner/amount
+  injection, JWT rejection, and default-denied callback routes.
+- Matching-key replay, parameter conflicts, per-owner key scope, invalid/missing keys,
+  and a fresh-key retry after verified failure while a hold remains active.
+- Twenty independent HTTP initiations with identical keys (one `201`, nineteen `200`)
+  and different keys (one `201`, nineteen `409`), observed waiting on PostgreSQL locks.
+- Twenty concurrent trusted result deliveries; exactly one booking, no duplicate receipt.
+- Two different seats racing for the same owner/key; one attempt and one conflict.
+- Expired/cancelled holds before initiation and late SUCCESS after another user
+  has replaced the hold; reconciliation cannot take that user's inventory.
+- Recovery from an attempt committed before the gateway call, provider SUCCESS
+  before outcome persistence fails, and financial SUCCESS before booking failure.
+- Rollback on attempt insertion and on the final payment-confirmation write,
+  proving inventory, reservation link, and booking all roll back together.
+- Pending provider receipt retries, stale/contradictory versions, newer corrections
+  to FAILED, and additional financial SUCCESS without another booking.
+- Receipt amount mismatch rejection and NEVER propagation preventing gateway
+  calls from an application transaction.
+- Pending-attempt/owner database constraints and V5-to-V6 preservation without
+  fake payments. Existing paid-booking migration tests validate repeated no-op
+  migration and unchanged history/data for all tables including receipts.
+
+`PaymentTestFixture` calls the actual strategy and verification persistence but
+stops before confirmation. Reservation/booking tests use it to exercise their
+original confirmation failure/race assertions with genuine mock proof; it does
+not forge SUCCESS with SQL or bypass JWT on the HTTP endpoints. Security and the
+20-client booking workflow traverse hold, payment, and booking-read HTTP APIs.
+Test-only direct provider ledger edits model delayed/corrected outcomes; the
+application exposes no such status-mutation API.
+
+Interrupted workflows are simulated at durable transaction boundaries and with
+real PostgreSQL failure triggers. These tests do not kill an OS process, partition
+a network, run multiple application instances, exercise a real payment network,
+or benchmark production performance. They demonstrate recovery from equivalent
+persisted intermediate states, not deployed failover or payment certification.
+Automatic reconciliation/refunds, lock timeouts, and operational controls remain
+limitations documented in HLD and DECISIONS.

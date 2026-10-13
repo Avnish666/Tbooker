@@ -1,13 +1,13 @@
 # High-level design
 
-This document describes the implemented backend through Phase 6. Proposed
+This document describes the implemented backend through Phase 8. Proposed
 extensions are explicitly marked as future work. See [LLD](LLD.md) for classes,
 [database design](DATABASE.md) for constraints, and [API](API.md) for contracts.
 
 ## Requirements and scope
 
 The application lets a client list shows, inspect a show and its seat inventory,
-and immediately confirm one seat for an authenticated user. Users register,
+hold it for five minutes, and confirm it through a verified mock payment. Users register,
 log in, and read only their own bookings. A physical seat can be
 booked independently for different shows. Missing resources, invalid requests,
 and already-booked seats have distinct HTTP responses.
@@ -17,8 +17,9 @@ booking for the same show-seat row. Seat availability and its booking must commi
 or roll back together. Other requirements are repeatable schema migrations,
 UTC timestamps, DTO-based HTTP contracts, and PostgreSQL integration tests.
 
-Authentication uses BCrypt and JWT with USER/ADMIN roles. There is no payment,
-temporary hold, cancellation, catalogue administration, search, filtering, or
+Authentication uses BCrypt and JWT with USER/ADMIN roles. Mock UPI/Card payments
+are implemented. There is no real payment provider,
+confirmed-booking cancellation, catalogue administration, search, filtering, or
 pagination. ADMIN authorization is configured for future catalogue mutations,
 but no mutation handlers exist. Public deployment also needs the security and
 operational controls described in [SECURITY.md](SECURITY.md).
@@ -37,8 +38,22 @@ or an architecture framework.
 flowchart LR
     Client[HTTP client] --> Security[Spring Security and JWT validation]
     subgraph App[Single Spring Boot application]
-        Security --> Controllers[AuthController, ShowController, BookingController]
-        Controllers --> Services[AuthService, ShowCatalogueService, BookingService]
+        Security --> Controllers[Auth, catalogue, booking, reservation and payment controllers]
+        Controllers --> Services[Auth, catalogue, booking and reservation services]
+        Controllers --> Payments[PaymentService - no application transaction]
+        Payments --> Tx[PaymentTransactions]
+        Payments --> Processor[PaymentResultProcessor]
+        Processor --> Services
+        Processor --> Tx
+        Payments --> Registry[PaymentStrategyRegistry]
+        Processor --> Registry
+        Registry --> Strategies[Mock UPI and Card strategies]
+        Strategies --> Mock[MockGatewayStore - separate short transaction]
+        Tx --> Repositories
+        Tx --> Inventory
+        Services --> Inventory[SeatInventoryService]
+        Cleanup[ReservationCleanup scheduler] --> Inventory
+        Inventory --> Repositories
         Services --> Tokens[TokenService and Nimbus JwtEncoder]
         Services --> Repositories[Spring Data JPA repositories]
         Repositories --> Persistence[Hibernate and HikariCP]
@@ -48,6 +63,7 @@ flowchart LR
     end
     Security --> Health
     Persistence --> DB[(PostgreSQL)]
+    Mock --> DB
     Flyway --> DB
     Health -. Actuator database health .-> DB
 ```
@@ -64,9 +80,14 @@ cache, message broker, or separate worker in the repository.
 | Spring Security | Validate bearer tokens, create the principal, and apply public/USER/ADMIN route rules. |
 | `AuthService` / `TokenService` | Register BCrypt credentials, verify login, and issue short-lived signed JWTs. |
 | `ShowCatalogueService` | Read shows and inventory in read-only transactions; build response records. |
-| `BookingService` | Validate associations, atomically book a seat, and query only the authenticated user's bookings. |
+| `BookingService` | Read own bookings; reject the retired immediate-booking write path with `409`. |
 | Spring Data repositories | Fetch catalogue data, execute the conditional SQL update, and persist bookings. |
-| PostgreSQL | Store eight domain tables and enforce identities, relationships, checks, and uniqueness. |
+| `ReservationService` | Create, view, confirm, and cancel owner-scoped reservations. |
+| `SeatInventoryService` / `ReservationCleanup` | Coordinate seat locks and database-time expiration; run bounded cleanup batches. |
+| `PaymentService` / `PaymentTransactions` | Orchestrate attempts outside transactions; persist owner-scoped idempotency, outcomes, and read DTOs in short transactions. |
+| `PaymentResultProcessor` | Verify canonical provider receipts, persist outcomes, and attempt payment-gated confirmation or flag reconciliation. |
+| `PaymentStrategyRegistry` / mock strategies | Select injected UPI/Card behavior; use durable mock receipts with stable operation IDs. |
+| PostgreSQL | Store ten domain tables plus the mock provider ledger; enforce identities, relationships, checks, and uniqueness. |
 | Flyway | Apply versioned schema changes and, only under `dev`, repeatable sample data. |
 | `ApiExceptionHandler` | Translate domain exceptions and selected database failures into Problem Details. |
 | Health endpoints | Lightweight HTTP health plus Actuator liveness and database-aware readiness. |
@@ -83,14 +104,18 @@ ends. Show lists are ordered by start time and ID; seat lists are ordered by sea
 number and ID. Lists are unpaged. A returned availability value is a snapshot,
 not a reservation or a guarantee that a later booking will succeed.
 
-For a booking, Spring Security validates the bearer token first. The controller
-derives the user ID from its subject; the body contains only `showSeatId` and
-cannot select another user. Spring MVC validates IDs and the request body. The
-transactional service checks the show, user, show-seat existence, and show-seat
-association. It atomically changes an available inventory row to `BOOKED`, then
-inserts a `CONFIRMED` booking. The transaction commits before the controller
-returns `201`. Failures roll back the transaction before HTTP error translation.
-See the [booking sequence](LLD.md#booking-sequence).
+For booking creation, Spring Security validates the token and the controller
+uses its subject as the owner. The client creates a hold with `showSeatId`, then
+initiates payment with `method` and an `Idempotency-Key`. A preparation transaction
+checks ownership/expiry under the inventory lock and stores a PENDING attempt.
+The selected strategy executes outside that transaction and verifies a durable
+mock receipt. A second transaction records the financial outcome. Only verified
+SUCCESS triggers a third transaction that checks the active hold again and
+commits inventory, booking, reservation, and confirmation status together.
+Payment creation returns `201`; a replay returns `200` with the current stored
+payment state. A payment resource can be SUCCESS while confirmation is PENDING
+or RECONCILIATION_REQUIRED; clients must inspect both fields. See the
+[booking sequence](LLD.md#booking-sequence).
 
 Registration stores a BCrypt hash and returns a user DTO; login verifies the hash
 and issues a JWT. Booking reads combine the authenticated owner ID with the
@@ -108,36 +133,82 @@ exercise the database's actual locking and SQL semantics.
 Availability lives on `ShowSeat`, not `Seat`. This makes `(show, physical seat)`
 the inventory unit. A booking references exactly one such unit. The current
 application uses one writable database and synchronous transactions; no replicas
-or eventual-consistency workflows are configured.
+are configured. Payment outcome and booking confirmation deliberately commit
+separately, so a successful payment may temporarily await confirmation or require
+reconciliation.
 
 ## Concurrency protection
 
-A read-then-save availability check would allow two transactions to read
-`AVAILABLE` before either writes. Instead, the service uses this statement:
+A read-then-save check without a database lock can let two requests both see an
+available seat. Every supported inventory mutation now locks the same show-seat
+row with `SELECT ... FOR UPDATE`, then uses conditional updates and checks their
+row counts in a short `READ COMMITTED` transaction. This serializes
+hold creation, payment preparation/results, confirmation, cancellation, and expiration across
+application instances sharing PostgreSQL. Locks last only for the database work,
+never for the five-minute reservation period.
 
-```sql
-UPDATE tbooker.show_seats
-SET status = 'BOOKED'
-WHERE id = :showSeatId AND show_id = :showId AND status = 'AVAILABLE';
+A hold inserts a `HELD` reservation and changes inventory to `HELD`. Confirmation
+requires the reservation owner, persisted verified payment `SUCCESS`, and
+`expires_at > decisionTime`; it changes inventory
+to `BOOKED`, inserts one confirmed booking, and links it to the reservation. A
+partial unique index permits at most one stored `HELD` row per show seat; the
+existing unconditional booking unique constraint still prevents duplicate
+permanent bookings. All these changes commit or roll back together.
+
+`decisionTime` comes from PostgreSQL `clock_timestamp()` **after** acquiring the
+seat lock. Transaction-start `CURRENT_TIMESTAMP` would incorrectly allow a
+request that waited beyond expiry. A confirmation accepted before the deadline
+may commit after it; the decision under the lock is the boundary. Expiration
+and confirmation cannot both commit for the same reservation. Retrying a
+confirmed reservation returns its original booking, including after its former
+deadline. Hold creation is not retry-idempotent; payment initiation uses a stored
+owner-scoped idempotency key. The legacy immediate-booking endpoint now rejects
+valid creation requests with `409`, preventing a payment bypass.
+
+## Reservation lifecycle and expiration
+
+Inventory and historical reservations are separate state machines:
+
+```mermaid
+stateDiagram-v2
+    [*] --> AVAILABLE
+    AVAILABLE --> HELD: Create reservation
+    HELD --> BOOKED: Verified payment and active owned hold
+    HELD --> AVAILABLE: Owner cancels or hold expires
+    BOOKED --> [*]: Permanent in this phase
 ```
 
-At the service's explicit `READ COMMITTED` isolation level, competing updates
-wait on the same PostgreSQL row. After a winner commits, PostgreSQL re-evaluates
-the predicate against the updated row: waiting requests affect zero rows and
-receive `409`. If the contender holding the row rolls back, a waiting request
-can claim the still-available seat.
+```mermaid
+stateDiagram-v2
+    [*] --> HELD
+    HELD --> CONFIRMED: Verified payment before expiry decision
+    HELD --> CANCELLED: Owner cancels before expiry
+    HELD --> EXPIRED: Database time reaches expiresAt
+```
 
-`@Transactional` covers both the update and insert, retaining the row lock until
-completion. An insert failure therefore releases the seat through rollback.
-`UNIQUE (show_seat_id)` on bookings is an independent final guard against
-duplicate rows, including writes that bypass the service. It does not by itself
-enforce agreement between the seat's status and the existence of a booking;
-that consistency depends on the supported transaction path.
+Reservation terminal states never return to `HELD`; another hold creates a new
+ID. There is no confirmed-booking cancellation endpoint. Ownership always comes
+from the JWT subject; foreign reservation IDs return `404`, also for ADMIN.
 
-The Phase 4 tests exercise 20 independent HTTP requests against one seat, repeated
-three times, and verify exactly one committed booking per repetition. These are
-correctness tests on one application and database instance, not performance or
-multi-instance resilience measurements. See [test evidence](TESTING.md).
+`ReservationCleanup` runs in the application every 30 seconds by default. Each
+transaction processes at most 100 expired inventory rows using `FOR UPDATE OF s
+SKIP LOCKED`. Concurrent schedulers skip busy rows; later runs handle backlog.
+`reservations.cleanup.enabled=false` disables it; `reservations.cleanup.delay-ms`
+changes the delay. No external worker or Redis is needed.
+
+Correctness does not require punctual cleanup: hold creation expires the previous
+hold under the same seat lock before claiming it.
+Confirmation always tests the deadline. Public seat reads show an expired hold
+as `AVAILABLE`; an owner's reservation read shows `EXPIRED`, even if the stored
+state is still `HELD`. Reads do not mutate data. A rejected confirmation/cancel
+rolls back its transaction, including any attempted expiration; cleanup or the
+next successful claim persists that transition.
+
+The scheduler only normalizes persisted state. Its delay/backlog can affect
+storage freshness, but cannot extend confirmation rights or prevent a new
+claim. Monitor backlog in a future operations phase. Bounded batches and
+`SKIP LOCKED` avoid making cleanup wait behind a busy seat; no claim about tested
+multi-node throughput or clock failover is made.
 
 ## Potential bottlenecks and current limitations
 
@@ -150,7 +221,8 @@ multi-instance resilience measurements. See [test evidence](TESTING.md).
 | Booking lookups | Resource checks add database round trips before the update and insert. No latency claim is made. |
 | Registration and login | BCrypt costs CPU; registration holds a database transaction during hashing. Rate limiting and production sizing are not implemented. |
 | Single database | It is the common write dependency. Backups, failover, recovery procedures, and production monitoring are not configured here. |
-| Client retries | A committed booking with a lost HTTP response is ambiguous to the client; retry returns `409`, with no idempotency lookup. |
+| Client retries | Payments recover through the original owner/key and confirmation through reservation ID. Hold creation still has no idempotency/recovery lookup. |
+| Payment history and recovery | Unpaged reads grow with history. No automatic reconciliation worker, refunds, provider timeout policy, or operational alerts exist. |
 
 There is also no rule rejecting bookings for past shows, and scheduling only
 rejects equal start times on the same screen, not overlapping time ranges.
@@ -192,9 +264,9 @@ filter chain, key configuration, and explicit limitations.
 **Redis:** A future cache could serve frequently read movie, theatre, and show
 metadata. It would need bounded TTLs, invalidation rules, and a database fallback.
 Cached seat availability can become stale immediately; PostgreSQL's conditional
-claim and constraints must remain authoritative. Temporary holds require their
-own ownership, expiry, and recovery design before choosing Redis as a component.
-There are currently no cache clients, Redis locks, or hold states.
+claim and constraints must remain authoritative. Holds already use PostgreSQL
+ownership, expiry timestamps, and transactions; introducing Redis must not create
+a second inventory authority. There are currently no cache clients or Redis locks.
 
 **Kafka:** Future notifications or analytics could consume booking events after
 commit. A transactional outbox would insert an event in the same database
@@ -203,6 +275,67 @@ This avoids a database-plus-broker dual write in the request transaction. Such a
 design must handle at-least-once delivery, idempotent consumers, ordering needs,
 retries, and replay. No outbox table, publisher, topic, or consumer exists today.
 
-Payment integration likewise needs a later lifecycle design. External payment
-calls must not hold the current seat transaction open. See [decisions](DECISIONS.md)
+Real provider integration needs authenticated callbacks, provider idempotency,
+timeout/uncertain-result handling, reconciliation automation, and refund policy.
+The mock demonstrates transaction separation without certifying these capabilities. See [decisions](DECISIONS.md)
 and the [roadmap](ROADMAP.md) for the boundaries of future phases.
+
+## Payment consistency, retries, and recovery
+
+```mermaid
+stateDiagram-v2
+    [*] --> PENDING: Persist attempt and stable gateway request ID
+    PENDING --> SUCCESS: Verified provider receipt
+    PENDING --> FAILED: Verified provider receipt
+    FAILED --> SUCCESS: Newer verified provider correction
+```
+
+SUCCESS is financially terminal in this phase: delayed failures cannot undo a
+charge, and refunds would require a separate workflow. A newer FAILED-to-SUCCESS
+correction is recorded even if a different attempt has since confirmed the seat;
+the extra success is marked RECONCILIATION_REQUIRED, never discarded to satisfy
+a misleading unique-success rule.
+
+| Financial outcome | Confirmation state | Meaning |
+| --- | --- | --- |
+| PENDING / FAILED | NOT_READY | No verified success eligible for booking. |
+| SUCCESS | PENDING | Outcome committed; confirmation not yet committed or database retry needed. |
+| SUCCESS | CONFIRMED | Booking, inventory, reservation link, and payment confirmation committed together. |
+| SUCCESS | RECONCILIATION_REQUIRED | Hold expired/cancelled or another payment confirmed it; manual investigation/refund policy is needed. |
+
+`UNIQUE(user_id, idempotency_key)` arbitrates retries even across reservations.
+Reusing a key with another reservation or method returns `409`; identical retries
+reuse the stored amount and gateway request UUID. One PENDING attempt per
+reservation is also database-enforced. Under the seat lock, the service rejects
+a new key if a PENDING or SUCCESS attempt already exists. Failed attempts can be
+retried with a new key while the hold is active.
+
+The mock provider ledger deduplicates by gateway UUID. Gateway invocation itself
+can occur more than once; this is **not exactly-once external payment execution**.
+`PaymentResultProcessor.process(id)` treats notifications as hints and retrieves
+the receipt independently. Matching operation ID, amount, currency, reference,
+and monotonically increasing version are required. Older results are ignored,
+equal-version contradictions fail verification, and SUCCESS cannot regress.
+There is no public callback or client-supplied success field.
+
+A crash before the gateway call leaves a durable PENDING attempt; the original
+key resumes it. A crash after the mock receipt commits leaves recoverable proof.
+A crash after financial SUCCESS commits but before booking commits leaves
+SUCCESS/PENDING; retry the key, or retry reservation confirmation while active.
+The internal processor can re-verify persisted attempts for reconciliation.
+There is **no automatic payment reconciliation scheduler or public operator API**.
+GETs are read-only and never advance payments. A configured PENDING mock receipt
+stays pending until trusted provider state changes; clients cannot resolve it.
+
+Late success must not steal a replacement hold. Confirmation rechecks expiry and
+ownership under the same inventory lock as cancellation/cleanup. If it cannot
+confirm, the financial SUCCESS remains durable and reconciliation is flagged.
+No automatic refund or hold extension is implemented. A PENDING retry may finish
+an already-started operation after expiry; the system cannot make gateway timing
+atomic with the hold deadline.
+
+The mock ledger is in the **same PostgreSQL database**, with separate transactions.
+It models durable failure boundaries, not real independent provider storage,
+network partitions, payment security certification, or production readiness.
+Multiple app instances would share the same database constraints and locks, but
+multi-instance deployment/failover has not been tested.

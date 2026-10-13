@@ -3,6 +3,8 @@
 Each milestone is a separate implementation phase with its own scope and tests.
 Start with a modular monolith and one PostgreSQL database. Extract services only
 after a concrete operational need and an architecture decision record.
+Earlier milestones describe their original scope; later phases supersede API
+contracts where stated. See `API.md` for the current contract.
 
 ## Phase 1 — Foundation (implemented)
 
@@ -48,7 +50,7 @@ after a concrete operational need and an architecture decision record.
 - Describe actual classes, interfaces, relationships, and booking sequence diagrams.
 - Record schema details, API contracts, design decisions, and alternatives.
 - Link setup, verification, and future milestones from the README.
-- Keep Redis, Kafka, holds, payments, and other future work explicitly unimplemented.
+- Keep proposed future components distinct from the implemented scope at each phase.
 
 ## Phase 6 — Authentication and authorization (implemented)
 
@@ -60,6 +62,29 @@ after a concrete operational need and an architecture decision record.
 - Preserve legacy users without assigning default passwords; verify V3-to-V4 upgrades.
 - Test security with real signed JWTs and retain transaction/concurrency coverage.
 
+## Phase 7 — Temporary reservations and expiration (implemented)
+
+- Hold a show seat for five minutes using PostgreSQL timestamps and transactions.
+- View, confirm, or cancel only the authenticated user's reservation.
+- Retain historical reservations and permanent booking uniqueness.
+- Serialize seat operations, reclaim expired holds synchronously, and run bounded scheduled cleanup.
+- Make confirmation retries return the same booking; never release confirmed seats during expiry.
+- Verify hold contention, expiry/confirmation races, ownership, rollback, scheduler wiring, and V4 upgrades.
+
+## Phase 8 — Mock payment processing (implemented)
+
+- Inject UPI/Card PaymentStrategy beans through a Spring-managed registry.
+- Persist attempts and durable mock receipts in V6; support configured outcomes.
+- Enforce owner-scoped initiation idempotency and stable provider request IDs.
+- Independently verify results; handle duplicate, stale, and corrected outcomes.
+- Require verified success for new bookings and disable unpaid immediate creation.
+- Keep gateway execution outside application transactions and financial success
+  separate from booking confirmation; retain retry/reconciliation states.
+- Expose secure owner-only payment status/history and booking confirmation reads.
+- Verify concurrency, rollback, retry boundaries, legacy migration preservation,
+  and the existing reservation/security regressions against PostgreSQL.
+- Document current guarantees and the absence of real provider/refund automation.
+
 ## Future — Catalogue administration and scheduling
 
 - Add validated write use cases for catalogues and venue layouts when requested.
@@ -68,21 +93,22 @@ after a concrete operational need and an architecture decision record.
 - Define inventory generation when shows are created and rules for layout edits.
 - Add tests for scheduling boundaries and persistence invariants.
 
-## Future — Holds and booking lifecycle
+## Future — Booking lifecycle and operational controls
 
-- Define temporary seat-hold state transitions, expiry rules, and cancellation.
-- Design ownership and release semantics without weakening double-booking safety.
-- Introduce request idempotency; a duplicate request currently returns `409`.
-- Revisit the unique booking constraint deliberately if cancelled historical
-  bookings must coexist with a new booking for the same inventory row.
-- Test simultaneous requests, rollback, retries, and hold expiration.
+- Define confirmed-booking cancellation and refunds as a separate workflow.
+- Revisit permanent booking uniqueness only if cancelled historical bookings
+  must coexist with a new booking for the same inventory row.
+- Add general request idempotency and hold-creation recovery, quotas, and retention policies.
+- Measure expiry backlog and lock waits before tuning cleanup and admission limits.
 
 ## Future — Identity and payment boundaries
 
 - Extend identity with email verification, password reset, legacy enrollment,
   token revocation/rotation, and abuse controls when requested.
-- Define a payment interface, use a sandbox provider, and verify callbacks.
-- Handle duplicate callbacks, cancellation, refunds, and reconciliation.
+- Replace mock strategies with a real sandbox provider only when requested.
+- Authenticate external callbacks; add automated reconciliation, refunds, and
+  provider timeout/uncertain-result operations. Mock duplicate/stale-result
+  handling and durable manual retry are implemented in Phase 8.
 - Introduce patterns only where actual variation or failure handling needs them.
 
 ## Future — Reliability and system design
@@ -105,5 +131,5 @@ after a concrete operational need and an architecture decision record.
 - Publish reproducible performance evidence for the resume project, with
   limitations documented.
 
-Advance one phase at a time. Do not add holds, Redis, Kafka, payments, or
-cancellation as part of Phase 6.
+Advance one phase at a time. Phase 8 adds mock payments only; real providers,
+Redis, Kafka, refunds, and confirmed-booking cancellation remain future work.

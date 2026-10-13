@@ -75,6 +75,10 @@ class SecurityIntegrationTests extends SecurityTestSupport {
 
 	@BeforeEach
 	void resetDedicatedDatabase() {
+		jdbc.update("UPDATE tbooker.reservations SET confirmed_payment_id = NULL");
+		jdbc.update("DELETE FROM tbooker.payments");
+		jdbc.update("DELETE FROM tbooker.mock_gateway_receipts");
+		jdbc.update("DELETE FROM tbooker.reservations");
 		jdbc.update("DELETE FROM tbooker.bookings");
 		jdbc.update("UPDATE tbooker.show_seats SET status = 'AVAILABLE'");
 		jdbc.update("DELETE FROM tbooker.users WHERE email NOT IN ('alex@example.test', 'priya@example.test')");
@@ -170,7 +174,7 @@ class SecurityIntegrationTests extends SecurityTestSupport {
 		assertThat(jwt.getClaimAsString("role")).isEqualTo("USER");
 		assertThat(jwt.getClaims()).doesNotContainKeys("password", "passwordHash", "email");
 		assertThat(jwt.getExpiresAt()).isEqualTo(jwt.getIssuedAt().plusSeconds(900));
-		book("Bearer " + token).andExpect(status().isCreated()).andExpect(jsonPath("$.userId").value(id));
+		book("Bearer " + token).andExpect(status().isOk()).andExpect(jsonPath("$.userId").value(id));
 		assertThat(jdbc.queryForObject("SELECT user_id FROM tbooker.bookings", Long.class)).isEqualTo(id);
 	}
 
@@ -268,7 +272,7 @@ class SecurityIntegrationTests extends SecurityTestSupport {
 		register("other@example.test", PASSWORD).andExpect(status().isCreated());
 		String owner = loginToken("owner@example.test");
 		String other = loginToken("other@example.test");
-		var result = book(owner).andExpect(status().isCreated()).andReturn();
+		var result = book(owner).andExpect(status().isOk()).andReturn();
 		long bookingId = mapper.readTree(result.getResponse().getContentAsString()).get("id").asLong();
 		mockMvc.perform(get("/api/bookings").header("Authorization", owner))
 				.andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(1)))
@@ -299,7 +303,7 @@ class SecurityIntegrationTests extends SecurityTestSupport {
 				.andExpect(status().isMethodNotAllowed());
 		mockMvc.perform(post("/api/shows").header("Authorization", originalUserToken))
 				.andExpect(status().isForbidden());
-		book(admin).andExpect(status().isCreated());
+		book(admin).andExpect(status().isOk());
 		mockMvc.perform(get("/api/bookings").header("Authorization", admin))
 				.andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(1)));
 	}
@@ -335,7 +339,7 @@ class SecurityIntegrationTests extends SecurityTestSupport {
 						+ "SELECT (SELECT MIN(id) FROM tbooker.users), MIN(id), 'CONFIRMED', CURRENT_TIMESTAMP FROM tbooker.show_seats");
 				statement.execute("UPDATE tbooker.show_seats SET status = 'BOOKED' WHERE id = (SELECT MIN(id) FROM tbooker.show_seats)");
 			}
-			var flyway = Flyway.configure().dataSource(url, postgres.getUsername(), postgres.getPassword()).defaultSchema("public").load();
+			var flyway = Flyway.configure().dataSource(url, postgres.getUsername(), postgres.getPassword()).defaultSchema("public").target("4").load();
 			assertThat(flyway.migrate().migrationsExecuted).isEqualTo(1);
 			assertThat(flyway.migrate().migrationsExecuted).isZero();
 			try (var connection = DriverManager.getConnection(url, postgres.getUsername(), postgres.getPassword());
@@ -368,8 +372,14 @@ class SecurityIntegrationTests extends SecurityTestSupport {
 	}
 
 	private ResultActions book(String authorization) throws Exception {
-		return mockMvc.perform(post("/api/shows/{id}/bookings", showId).header("Authorization", authorization)
+		var hold = mockMvc.perform(post("/api/shows/{id}/reservations", showId).header("Authorization", authorization)
 				.contentType(MediaType.APPLICATION_JSON).content("{\"showSeatId\":" + seatId + "}"));
+		if (hold.andReturn().getResponse().getStatus() != 201) { return hold; }
+		long reservationId = mapper.readTree(hold.andReturn().getResponse().getContentAsString()).get("id").asLong();
+		mockMvc.perform(post("/api/reservations/{id}/payments", reservationId).header("Authorization", authorization)
+				.header("Idempotency-Key", "security-" + reservationId).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"method\":\"UPI\"}")).andExpect(status().isCreated());
+		return mockMvc.perform(get("/api/reservations/{id}/booking", reservationId).header("Authorization", authorization));
 	}
 
 	private void assertUnchangedInventory() {

@@ -1,7 +1,7 @@
 # HTTP API
 
 Local base URL: `http://localhost:8080` (`SERVER_PORT` can override the port).
-Successful domain responses are JSON DTOs. Catalogue reads are public. Booking
+Successful domain responses are JSON DTOs. Catalogue reads are public. Payment, booking, and reservation
 routes require `Authorization: Bearer <accessToken>`; the JWT subject determines
 the user. Authentication is stateless and does not use cookies or HTTP sessions.
 
@@ -15,12 +15,20 @@ the user. Authentication is stateless and does not use cookies or HTTP sessions.
 | GET | `/api/shows` | `200`, array of `ShowResponse` |
 | GET | `/api/shows/{showId}` | `200`, `ShowResponse` |
 | GET | `/api/shows/{showId}/seats` | `200`, array of `ShowSeatResponse` |
-| POST | `/api/shows/{showId}/bookings` | `201`, `BookingResponse` |
+| POST | `/api/shows/{showId}/bookings` | Retired creation path: `409` after valid resource checks |
 | GET | `/api/bookings` | `200`, array of own `BookingResponse` |
 | GET | `/api/bookings/{bookingId}` | `200`, own `BookingResponse` |
+| POST | `/api/shows/{showId}/reservations` | `201`, `ReservationResponse` and `Location` |
+| GET | `/api/reservations/{id}` | `200`, own `ReservationResponse` |
+| POST | `/api/reservations/{id}/confirmation` | `200`, `BookingResponse`, including retries |
+| DELETE | `/api/reservations/{id}` | `204`, cancellation of an active hold |
+| POST | `/api/reservations/{id}/payments` | `201` new / `200` replay, `PaymentResponse` and `Location` |
+| GET | `/api/payments/{id}` | `200`, own `PaymentResponse` |
+| GET | `/api/payments` | `200`, array of own `PaymentResponse` |
+| GET | `/api/reservations/{id}/booking` | `200`, own `BookingResponse`; `409` if not confirmed |
 
 Health retains its `/api/v1` prefix; catalogue and booking routes use `/api`.
-There are no user-list, catalogue-write, cancellation, hold, or payment endpoints.
+There are no user-list, catalogue-write, confirmed-booking cancellation, refund, or payment-callback endpoints.
 Catalogue mutation paths are reserved for ADMIN; there are no mutation handlers. No pagination or filtering parameters are implemented.
 
 ## Registration and login
@@ -156,76 +164,38 @@ Example array containing one inventory row:
 | `showId` | integer | Owning show. |
 | `seatId` | integer | Physical seat; independent of the inventory ID. |
 | `seatNumber` | string | Label such as `A5`. |
-| `status` | string | `AVAILABLE` or `BOOKED`. |
+| `status` | string | `AVAILABLE`, `HELD`, or `BOOKED`; expired holds are shown as `AVAILABLE` even before cleanup. |
 
 Rows are ordered lexically by `seatNumber`, then inventory `id`; this is not a
 numeric seat-label ordering algorithm. An existing show with no inventory
 returns `[]`; an absent show returns `404`. Availability is a read-time snapshot
 and can change before the client submits a booking.
 
-## Book one show seat
+## Legacy immediate booking and confirmation DTO
 
-Use a show-seat response's `id`, not its physical `seatId`. Log in first using
-an account registered through the authentication API. Sample users have no
-password; there is no shared development login.
+`POST /api/shows/{showId}/bookings` can no longer create a booking. After
+validating the JWT, `BookingRequest {"showSeatId":5}`, and resource associations,
+it returns `409` with `Immediate booking is no longer supported; create a
+reservation and pay first`. Invalid inputs still return `400`, missing resources
+`404`, and missing/invalid authentication `401`. This prevents the old route from
+bypassing the Phase 8 payment requirement.
 
-```bash
-# TOKEN is the accessToken from login. SHOW_ID came from the public catalogue.
-SHOW_SEAT_ID=5
-curl -i -X POST "http://localhost:8080/api/shows/$SHOW_ID/bookings" \
-  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  --data "{\"showSeatId\":$SHOW_SEAT_ID}"
-```
-
-`BookingRequest` contains one required, non-null, positive `Long` inventory ID:
-
-```json
-{"showSeatId":5}
-```
-
-Missing, null, zero, negative, fractional, or out-of-range IDs fail with `400`
-after authentication. `userId` is no longer a request field: sending it returns
-`400`. Other unknown request fields are also rejected.
-Use JSON integer values; the API does not promise rejection of every Jackson
-scalar coercion such as numeric strings. The show, authenticated user, and show seat must exist,
-and the inventory row must belong to the show in the path. Association mismatch
-returns `400`, not a booking for the other show.
-
-Successful response: `201 Created`, with this illustrative body:
-
-```json
-{
-  "id": 1,
-  "userId": 1,
-  "showId": 1,
-  "showSeatId": 5,
-  "status": "CONFIRMED",
-  "createdAt": "2026-10-08T09:45:00Z"
-}
-```
+Create a reservation, initiate a payment, then retrieve the booking using
+`GET /api/reservations/{id}/booking` or the existing own-booking APIs.
+There is currently no past-show booking cutoff.
 
 | `BookingResponse` field | JSON type | Meaning |
 | --- | --- | --- |
-| `id` | integer | Generated booking ID. |
-| `userId` | integer | User ID derived from the authenticated JWT subject. |
-| `showId` | integer | Requested show. |
-| `showSeatId` | integer | Claimed inventory row. |
-| `status` | string | Always `CONFIRMED` in the current lifecycle. |
-| `createdAt` | string | Server-assigned UTC instant, with up to microsecond precision. |
+| `id` | integer | Generated permanent booking ID. |
+| `userId` | integer | Owner derived from the authenticated JWT subject. |
+| `showId` | integer | Show being booked. |
+| `showSeatId` | integer | Show inventory ID, not physical `seatId`. |
+| `status` | string | Always `CONFIRMED` in this lifecycle. |
+| `createdAt` | string | UTC instant, up to microsecond precision. |
 
-The controller returns a body without a `Location` header; use
-`GET /api/bookings/{bookingId}` to retrieve your booking. Confirmation is immediate and involves no payment or
-temporary hold. There is currently no cutoff check for booking a past show.
-
-The seat update and booking insertion commit together before `201` is returned.
-Competing requests for the same available inventory row receive one success and
-conflicts for the others, assuming the winning transaction commits. An insert
-failure rolls back the availability change. See [booking design](BOOKING.md).
-
-POST is not idempotent: repeating a successful request, even for the same user,
-returns `409`. If the connection is lost after commit, the client cannot recover
-the original result by an idempotency key. The client can list its own bookings
-but there is no automatic retry-to-original-response mapping.
+```json
+{"id":1,"userId":3,"showId":1,"showSeatId":5,"status":"CONFIRMED","createdAt":"2026-10-13T05:00:00Z"}
+```
 
 ## Read your bookings
 
@@ -247,15 +217,15 @@ also read only their own bookings. Nonpositive or malformed booking IDs return
 
 The security handlers, domain exception advice, and Spring MVC error handling use RFC 9457
 Problem Details with `Content-Type: application/problem+json`. For example,
-attempting to book an already-booked inventory row produces:
+attempting to reserve held or already-booked inventory produces:
 
 ```json
 {
   "type": "about:blank",
   "title": "Conflict",
   "status": 409,
-  "detail": "Show seat 5 is already booked",
-  "instance": "/api/shows/1/bookings"
+  "detail": "This show seat is held or already booked",
+  "instance": "/api/shows/1/reservations"
 }
 ```
 
@@ -264,8 +234,9 @@ attempting to book an already-booked inventory row produces:
 | `400` | Invalid path/body input, malformed JSON, or show-seat association mismatch. |
 | `401` | Missing/invalid/expired token on protected routes, or invalid login credentials. |
 | `403` | Authenticated user lacks the role required by the route. |
-| `404` | Missing show/user/show seat, or missing/foreign booking. |
-| `409` | Duplicate registration email, unavailable seat, or the named booking unique constraint rejects an insert. |
+| `404` | Missing show/user/show seat, or missing/foreign booking, payment, or reservation. |
+| `409` | Duplicate email, unavailable seat, inactive reservation, missing payment proof, retired immediate booking, conflicting key parameters, pending/successful attempt, or named booking/hold uniqueness conflict. |
+| `502` | Provider receipt could not be verified. Retry the original payment key; do not create another charge. |
 | `500` | An unexpected data-integrity violation; detail is `The request could not be completed`. |
 
 Missing-resource details have the form `Show 1 was not found`,
@@ -296,3 +267,164 @@ curl -i -X POST "http://localhost:8080/api/shows/$SHOW_ID/bookings" \
 IDs, booking timestamps, and response cardinalities in these examples are
 illustrative. The development seed creates eight seats, uses generated IDs, and
 preserves any bookings already made; it does not reset the database on restart.
+
+## Temporary seat reservations
+
+All reservation routes require a valid bearer JWT and USER or ADMIN role.
+ADMIN has no ownership override. Reservation creation accepts only `showSeatId`;
+unknown fields (`userId`, `status`, `expiresAt`, etc.) return `400`. IDs must be
+positive `Long` values. The show, user, and inventory must exist (`404`); an
+inventory row belonging to another show returns `400`.
+
+```bash
+# Use an available show seat from the public catalogue and the accessToken from login.
+curl -i -X POST "http://localhost:8080/api/shows/$SHOW_ID/reservations" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  --data "{\"showSeatId\":$SHOW_SEAT_ID}"
+# Copy id from the response (illustrative value below).
+RESERVATION_ID=1
+curl --fail "http://localhost:8080/api/reservations/$RESERVATION_ID" \
+  -H "Authorization: Bearer $TOKEN"
+# Pay before confirmation. Keep this key for retries of this exact request.
+PAYMENT_KEY=$(uuidgen)
+curl -i -X POST "http://localhost:8080/api/reservations/$RESERVATION_ID/payments" \
+  -H "Authorization: Bearer $TOKEN" -H "Idempotency-Key: $PAYMENT_KEY" \
+  -H 'Content-Type: application/json' --data '{"method":"UPI"}'
+# Normally payment already confirmed it; this also safely retries confirmation.
+curl -i -X POST "http://localhost:8080/api/reservations/$RESERVATION_ID/confirmation" \
+  -H "Authorization: Bearer $TOKEN"
+# Alternatively, cancel an unpaid active hold before confirmation:
+curl -i -X DELETE "http://localhost:8080/api/reservations/$RESERVATION_ID" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Creation returns `201 Created`, `Location: /api/reservations/{id}`, and:
+
+```json
+{
+  "id": 1,
+  "showId": 1,
+  "showSeatId": 5,
+  "status": "HELD",
+  "createdAt": "2026-10-12T12:00:00Z",
+  "expiresAt": "2026-10-12T12:05:00Z",
+  "bookingId": null
+}
+```
+
+`ReservationResponse` contains positive integer IDs, a lifecycle status, UTC
+creation/deadline instants, and the nullable confirmed-booking ID. No entity or
+owner-selection input is exposed. The server grants five minutes from its
+**database-time allocation decision**, not five minutes after the client receives
+the response. Creation does not renew another hold, including the same user's;
+active-held or booked seats return `409`. An expired hold is atomically reclaimed.
+Hold creation has no client idempotency key or reservation-list recovery API.
+
+Viewing returns the same DTO and `200` for any owned historical state. A past
+deadline reports `EXPIRED` for an unconfirmed hold without needing cleanup to
+have run. An absent or another user's reservation returns `404` for viewing,
+confirmation, and cancellation alike.
+
+Confirmation takes no body. For an active owned reservation it requires a stored
+verified SUCCESS payment for that owner/reservation, then commits a permanent
+booking and returns `200` with `BookingResponse`. Missing proof returns `409`.
+Historical confirmed reservations without payment links remain readable/retryable;
+this exception preserves history and cannot create a new unpaid booking.
+Retried confirmations return **the same booking ID and body**, even after the
+former hold deadline; concurrent retries cannot create duplicates. Expired or
+cancelled reservations return `409`. The deadline is checked after acquiring the
+inventory lock; a request arriving early but acquiring it after expiry fails.
+A decision made before expiry can commit after it without being undone by cleanup.
+
+Cancellation takes no body. It returns `204` and atomically releases an active
+owned hold; repeating cancellation of the same cancelled ID also returns `204`
+without touching a replacement hold. Cancelling an expired or confirmed
+reservation returns `409`. Cancellation does not delete history and cannot cancel
+a confirmed booking. Cancelling while payment is pending does not cancel an
+already-started provider operation; late success requires reconciliation.
+Missing/invalid JWTs return `401`; route-role failures return
+`403`. Errors use the existing Problem Details format.
+
+## Mock payments
+
+All payment APIs require a validated JWT and USER/ADMIN role. ADMIN has no owner
+override. Initiation accepts only `PaymentRequest {"method":"UPI"}` or
+`{"method":"CARD"}`; case-sensitive enum values, a missing/null method, and unknown
+fields are validated. Clients cannot set amount, currency, owner, status,
+provider reference, or gateway request ID. Unknown fields return `400`.
+
+`Idempotency-Key` is required and contains 1–100 ASCII letters, digits, or
+`._:-`. Scope is `(authenticated user, key)`, with case-sensitive matching.
+The key binds reservation ID and method; reuse with different parameters returns
+`409`. A replay uses the stored server price snapshot even if configuration has
+changed. Keys currently have no expiration or purge workflow.
+
+```bash
+# RESERVATION_ID came from a successful hold. Generate ONCE, then reuse on retry.
+PAYMENT_KEY=$(uuidgen)
+curl -i -X POST "http://localhost:8080/api/reservations/$RESERVATION_ID/payments" \
+  -H "Authorization: Bearer $TOKEN" -H "Idempotency-Key: $PAYMENT_KEY" \
+  -H 'Content-Type: application/json' --data '{"method":"UPI"}'
+# Same URL, method and key safely resume/retrieve that attempt.
+PAYMENT_ID=1 # replace with returned id
+curl --fail "http://localhost:8080/api/payments/$PAYMENT_ID" -H "Authorization: Bearer $TOKEN"
+curl --fail http://localhost:8080/api/payments -H "Authorization: Bearer $TOKEN"
+curl -i "http://localhost:8080/api/reservations/$RESERVATION_ID/booking" -H "Authorization: Bearer $TOKEN"
+```
+
+A new attempt returns `201 Created`; a matching replay returns `200 OK`. Both
+include `Location: /api/payments/{id}`. A declined mock payment is still a created
+resource (`201` with FAILED), not a transport error. Example successful DTO:
+
+```json
+{
+  "id": 1,
+  "reservationId": 1,
+  "method": "UPI",
+  "amountMinor": 10000,
+  "currency": "INR",
+  "status": "SUCCESS",
+  "confirmationStatus": "CONFIRMED",
+  "providerReference": "mock-upi-00000000-0000-0000-0000-000000000001",
+  "bookingId": 1,
+  "createdAt": "2026-10-13T05:00:00Z",
+  "updatedAt": "2026-10-13T05:00:00.010Z"
+}
+```
+
+IDs, UUIDs and times are illustrative. `providerReference` is null before a
+verified receipt. `bookingId` is non-null only when this payment confirmed the
+booking. No JPA entities, provider operation UUID field, owner selector, or
+idempotency key are returned. Amount uses integer minor units: default 10000
+paise = INR 100, a mock price rather than implemented seat pricing.
+
+| Payment status / confirmation status | Client interpretation |
+| --- | --- |
+| PENDING / NOT_READY | Provider result is pending or not yet stored. Retry the original key. |
+| FAILED / NOT_READY | Verified failure, no booking; a new key can retry while the hold remains active. |
+| SUCCESS / PENDING | Financial success stored but booking has not committed. Retry the original key or confirmation while active. |
+| SUCCESS / CONFIRMED | Retrieve the permanent booking. |
+| SUCCESS / RECONCILIATION_REQUIRED | Payment succeeded but cannot allocate this reservation; no automatic refund exists. |
+
+Replays return the **current stored state**, which can advance after recovery;
+they do not replay frozen HTTP bytes. Pending retries may invoke the mock again
+with the same provider UUID. FAILED replays return stored failure; trusted
+internal verification can later record a newer provider correction. A new key
+is rejected when an unresolved/successful attempt exists. New attempts require
+an active owned hold; expired/cancelled/confirmed holds return `409`. A matching
+existing-key replay remains available after the hold becomes inactive.
+
+Payment history is unpaged, sorted by `createdAt DESC, id DESC`, and returns `[]`
+for no payments. Foreign/absent payment and reservation IDs return `404`, also
+for ADMIN. GET operations do not process results. Booking retrieval is `409` until
+the reservation is confirmed. Domain conflicts are Problem Details; uncertain
+provider/database failures must be recovered with the original key.
+
+No HTTP callback or payment-status mutation endpoint exists. An arbitrary
+`POST /api/payments/callback` is denied by the default security rule. Internal
+`PaymentResultProcessor.process(id)` retrieves provider proof independently.
+Mock outcome controls are trusted server configuration, never request parameters:
+`PAYMENTS_MOCK_UPI_OUTCOME` and `PAYMENTS_MOCK_CARD_OUTCOME` accept SUCCESS
+(default), FAILED, or PENDING. `PAYMENTS_MOCK_AMOUNT_MINOR` is positive (default
+10000); currency is fixed INR. Configuration changes affect only new receipts.
+There is no public way to advance a deliberately PENDING mock receipt.

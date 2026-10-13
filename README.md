@@ -5,7 +5,10 @@ provide the application foundation, show catalogue, and immediate confirmed
 bookings with database concurrency protection. Phase 4 verifies integration,
 rollback, and concurrent booking requests; Phase 5 documents the implemented
 design. Phase 6 adds BCrypt registration/login, JWT authentication, roles, and
-booking ownership. Later features are planned in [the roadmap](docs/ROADMAP.md).
+booking ownership. Phase 7 adds five-minute seat reservations, expiry, owner-only
+confirmation/cancellation, and repeatable confirmation. Phase 8 adds idempotent
+mock UPI/Card payments and requires verified payment for new bookings. Later
+features are planned in [the roadmap](docs/ROADMAP.md).
 
 ## Stack
 
@@ -16,12 +19,17 @@ booking ownership. Later features are planned in [the roadmap](docs/ROADMAP.md).
 - PostgreSQL 17, Docker Compose, JUnit 5, Mockito, and Testcontainers
 
 The original application package, `com.example.Tbooker`, is retained. Authentication
-is implemented; payments, temporary holds, Redis, and Kafka remain future work.
+and PostgreSQL-backed temporary holds and mock payments are implemented. Real
+providers, Redis, and Kafka remain future work.
 
 ## Current functionality and architecture
 
 - List all shows, inspect a show, and read its seat inventory through DTO APIs.
 - Register and log in, then confirm one show seat using the authenticated identity.
+- Hold an available seat for five minutes, inspect it, pay through a mock provider, or cancel the hold.
+- Initiate UPI/Card payment with an owner-scoped idempotency key; read your payment status/history.
+- Confirm only with verified success; retain successful payment if booking needs retry or reconciliation.
+- Reclaim expired holds safely even when scheduled cleanup is delayed.
 - List and retrieve only your own bookings; ADMIN has no ownership bypass.
 - Reject competing bookings using an atomic availability update and a unique
   booking constraint; roll back the seat claim if booking insertion fails.
@@ -35,12 +43,23 @@ flowchart LR
     Client[HTTP client] --> Security[Spring Security and JWT validation]
     subgraph App[Single Spring Boot application]
         Security --> Controllers[Controllers and DTOs]
-        Controllers --> Services[Catalogue and booking services]
+        Controllers --> Services[Catalogue, booking, and reservation services]
+        Controllers --> Payments[PaymentService and result processor]
+        Payments --> Tx[PaymentTransactions]
+        Tx --> Repos
+        Payments --> Registry[PaymentStrategyRegistry]
+        Registry --> Gateway[Mock UPI and Card strategies]
+        Gateway --> Ledger[MockGatewayStore - separate transaction]
+        Payments --> Services
+        Cleanup[ReservationCleanup scheduler] --> Inventory[SeatInventoryService]
+        Services --> Inventory
+        Inventory --> Repos
         Services --> Repos[Spring Data JPA repositories]
         Repos --> Persistence[Hibernate and HikariCP]
         Flyway[Flyway startup migrations]
     end
     Persistence --> DB[(PostgreSQL)]
+    Ledger --> DB
     Flyway --> DB
 ```
 
@@ -197,73 +216,94 @@ never activate `dev` against production.
 
 ## Authentication and booking API
 
-Register a local account, then log in. Replace the example password with your own
-private password of at least 12 characters (at most 72 UTF-8 bytes).
+Register a local account, then log in. Use a private password of at least 12
+characters (at most 72 UTF-8 bytes). Sample users have no shared login passwords.
 
 ```bash
 curl -i -X POST http://localhost:8080/api/auth/register \
   -H 'Content-Type: application/json' \
   --data '{"name":"Demo User","email":"demo@example.test","password":"replace-with-private-password"}'
-
 curl --fail -X POST http://localhost:8080/api/auth/login \
   -H 'Content-Type: application/json' \
   --data '{"email":"demo@example.test","password":"replace-with-private-password"}'
 
-# Copy accessToken from the login response. Do not commit or publish tokens.
+# Copy accessToken from login. Keep it private; use actual catalogue IDs.
 TOKEN=paste-access-token-here
 SHOW_ID=1
 SHOW_SEAT_ID=5
-curl -i -X POST "http://localhost:8080/api/shows/$SHOW_ID/bookings" \
+curl -i -X POST "http://localhost:8080/api/shows/$SHOW_ID/reservations" \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   --data "{\"showSeatId\":$SHOW_SEAT_ID}"
 
+# Copy the returned reservation id. Generate this key ONCE and retain for retries.
+RESERVATION_ID=1
+PAYMENT_KEY=$(uuidgen)
+curl -i -X POST "http://localhost:8080/api/reservations/$RESERVATION_ID/payments" \
+  -H "Authorization: Bearer $TOKEN" -H "Idempotency-Key: $PAYMENT_KEY" \
+  -H 'Content-Type: application/json' --data '{"method":"UPI"}'
+
+curl -i "http://localhost:8080/api/reservations/$RESERVATION_ID/booking" -H "Authorization: Bearer $TOKEN"
+curl --fail http://localhost:8080/api/payments -H "Authorization: Bearer $TOKEN"
 curl --fail http://localhost:8080/api/bookings -H "Authorization: Bearer $TOKEN"
-# Replace 1 with your returned booking ID.
-curl --fail http://localhost:8080/api/bookings/1 -H "Authorization: Bearer $TOKEN"
 ```
 
-Use actual show/inventory IDs from the catalogue. `showSeatId` is the inventory
-response's `id`, not its physical `seatId`. Do not send `userId`: the controller
-uses the validated JWT subject, and a body containing `userId` returns `400`.
+Registration returns `201` with USER role; duplicate emails return `409`. Login
+returns a short-lived Bearer token; invalid credentials return generic `401`.
+BCrypt hashes passwords and the JWT signing key comes from the environment.
+All ownership comes from the JWT subject; supplied `userId`, amount, status, or
+provider reference is rejected as an unknown input field.
 
-Registration returns `201` with the new user's ID, name, email, and `USER` role.
-Login returns an access token, `Bearer` token type, and lifetime in seconds.
-Duplicate emails return `409`; invalid credentials return a generic `401`.
-Passwords are stored only as salted BCrypt hashes. Signing keys come from the
-environment; there are no default account passwords or ADMIN credentials.
-
-Successful booking returns `201` after the seat claim and booking commit:
+A hold returns `201`. A new payment attempt returns `201` and
+`Location: /api/payments/{id}`; replaying the same owner/key/reservation/method
+returns `200` and the stored current result. Different parameters on that key
+return `409`. UPI and CARD default to SUCCESS; the client never selects outcome.
 
 ```json
-{
-  "id": 1,
-  "userId": 3,
-  "showId": 1,
-  "showSeatId": 5,
-  "status": "CONFIRMED",
-  "createdAt": "2026-10-09T03:00:00Z"
-}
+{"id":1,"reservationId":1,"method":"UPI","amountMinor":10000,"currency":"INR","status":"SUCCESS","confirmationStatus":"CONFIRMED","providerReference":"mock-upi-00000000-0000-0000-0000-000000000001","bookingId":1,"createdAt":"2026-10-13T05:00:00Z","updatedAt":"2026-10-13T05:00:00.010Z"}
 ```
 
-IDs and times are illustrative. Repeating the booking returns `409`; request
-idempotency is not implemented. Missing/invalid bearer tokens return `401`.
-Booking detail returns `404` for both a nonexistent booking and another user's
-booking; lists contain only the caller's bookings, including for ADMIN callers.
+Values are illustrative. Financial `status` and `confirmationStatus` are separate:
+SUCCESS/PENDING means booking needs retry; SUCCESS/RECONCILIATION_REQUIRED means
+success could not allocate this hold. FAILED/NOT_READY creates no booking. Only
+CONFIRMED has a booking ID. GETs never advance payment state. Retry the original
+key after uncertainty; do not invent another key for a pending payment.
 
-Catalogue reads stay public. Catalogue writes and the reserved `/api/admin/**`
-namespace require ADMIN, but mutation handlers are not implemented. A trusted
-operator may promote a registered account in the database; there is no public
-role assignment API. Existing tokens retain their role until expiry. See
-[API contracts](docs/API.md), [security design](docs/SECURITY.md), and the
-[booking transaction design](docs/BOOKING.md).
+`POST /api/reservations/{id}/confirmation` can retry confirmed allocation, but an
+unpaid active hold returns `409`. The legacy immediate-booking endpoint also
+returns `409` and cannot bypass payment. Expired/cancelled holds cannot confirm;
+late successful payments remain recorded for reconciliation. Existing historical
+bookings remain readable without fabricated payment rows.
+
+Optional trusted server configuration (also in `.env.example`):
+
+| Environment variable | Default | Meaning |
+| --- | --- | --- |
+| `PAYMENTS_MOCK_AMOUNT_MINOR` | `10000` | Positive integer paise, fixed INR; mock price, not seat pricing. |
+| `PAYMENTS_MOCK_UPI_OUTCOME` | `SUCCESS` | SUCCESS, FAILED, or PENDING for a new UPI receipt. |
+| `PAYMENTS_MOCK_CARD_OUTCOME` | `SUCCESS` | SUCCESS, FAILED, or PENDING for a new Card receipt. |
+
+Set one outcome to FAILED before starting to exercise a decline. Configuration
+changes affect only new mock receipts; retries retain the original operation and
+price. PENDING stays pending until trusted provider state changes; no client
+success/callback endpoint exists. No card or UPI account details are collected.
+
+All payment/booking/reservation detail reads return `404` for foreign IDs,
+including ADMIN callers. Catalogue reads stay public. Catalogue writes and the
+reserved ADMIN namespace require ADMIN, but write handlers are not implemented.
+See [API contracts](docs/API.md), [security](docs/SECURITY.md), and
+[booking transactions](docs/BOOKING.md).
 
 ## Database migrations
 
 Flyway runs on application startup and validates migration checksums. V1 creates
 the `tbooker` schema, V2 creates the seven catalogue tables and constraints, and
-V3 creates bookings with a unique constraint on the show seat. V4 adds password
+V5 adds reservation history, HELD inventory, partial hold uniqueness, and booking-link
+integrity while retaining permanent bookings. V3 creates bookings with a unique
+constraint on the show seat. V4 adds password
 hashes and roles while preserving existing users and bookings. Legacy accounts
-without a hash cannot log in.
+without a hash cannot log in. V6 adds payment attempts, durable mock receipts,
+owner/key uniqueness and payment confirmation links; historical bookings are
+preserved without fabricated charges.
 Migration history is in `public.flyway_schema_history`. Hibernate uses the
 `tbooker` schema with `ddl-auto: validate`; it does not create or alter tables.
 
@@ -299,15 +339,18 @@ protection, and API validation. Mockito is available through
 `spring-boot-starter-test`.
 
 Phase 4 adds a real HTTP test with 20 simultaneous requests, repeated three times
-with fresh fixtures. Every run requires exactly one `201`, nineteen `409`
-responses, one booking, and a `BOOKED` seat. The test-only connection pool allows
+with fresh fixtures. The updated paid workflow requires one winning hold,
+one payment and booking, nineteen `409` hold conflicts, and a `BOOKED` seat.
+The winner retrieves its booking with `200`; payment creation returns `201`. The test-only connection pool allows
 all 20 transactions to contend at PostgreSQL. Migration checks call Flyway again
 and verify that migration history and application data remain unchanged.
 
 See [TESTING.md](docs/TESTING.md) for execution details and remaining weaknesses.
-The full suite was rerun during Phase 6: **125 tests passed,
-0 failures, 0 errors, 0 skipped**. These are correctness results, not performance
-measurements.
+The Phase 8 full run passed **194 tests: 0 failures, 0 errors, 0 skipped**.
+It includes the 159 earlier regression cases through the paid workflow and
+35 payment verification/recovery tests.
+See the latest full-run counts in [TESTING.md](docs/TESTING.md#phase-8-verification).
+These are correctness checks, not performance measurements.
 
 Run only the PostgreSQL booking tests with:
 
@@ -340,10 +383,11 @@ Under `src/main/java/com/example/Tbooker`:
 | `controller` | HTTP mapping and DTO validation; thin controllers |
 | `service` | Use cases and transaction boundaries |
 | `repository` | Persistence access |
+| `payment` | PaymentStrategy, injected provider registry, mock adapters and durable ledger |
 | `entity` | JPA domain entities, kept out of API bodies |
 | `dto` | API request and response types |
 | `exception` | Domain exceptions and centralized HTTP mappings |
-| `config` | Security filter chain, JWT/key configuration, and authentication error responses |
+| `config` | Security filter chain, JWT/key configuration, authentication error responses, and reservation cleanup scheduling |
 
 Unused packages contain package documentation, not speculative implementations.
 As domain modules arrive, preserve Controller → Service → Repository dependency
@@ -354,15 +398,17 @@ See [AGENTS.md](AGENTS.md) for development conventions.
 ## Future roadmap and current limits
 
 Later phases will define catalogue administration, filters and pagination,
-overlap-aware scheduling, seat holds, cancellation, and request idempotency.
+overlap-aware scheduling, confirmed-booking cancellation, and general request idempotency.
 Later identity work includes password reset, email verification, and token revocation.
-Payment integration follows its own requirements. Redis
+Real provider integration, automated reconciliation, refunds and payment
+operations need a later phase. Redis
 caching and Kafka workflows are proposals for demonstrated needs, not installed
 components. Delivery work still includes an application Dockerfile, CI, and
 deployment/backup procedures. See the [roadmap](docs/ROADMAP.md).
 
-Currently, a booking retry after a lost success response returns `409` instead
-of recovering the first result. There is no booking-specific database lock or
+The legacy immediate-booking endpoint now returns `409`. A hold-creation retry
+also returns `409` for an allocated seat;
+reservation confirmation retries recover the same booking using the reservation ID. There is no booking-specific database lock or
 statement timeout, no past-show booking cutoff, and no scheduling overlap check.
 Direct SQL can make seat status disagree with booking existence, although the
 supported service transaction maintains both atomically. JWTs currently have no
@@ -370,3 +416,40 @@ refresh/revocation flow, role changes wait for token expiry, and auth endpoints
 have no rate limiting. Legacy accounts need a future trusted enrollment flow. The tests establish the described correctness
 properties on one application/database instance, not production performance,
 failover readiness, or a capacity guarantee.
+
+## Reservation and mock payment workflow
+
+After logging in, use `POST /api/shows/{showId}/reservations` with
+`{"showSeatId":5}` and the bearer token. It returns `201` and a reservation ID.
+View it with `GET /api/reservations/{id}`, pay with
+`POST /api/reservations/{id}/payments` and an Idempotency-Key, then retrieve
+`GET /api/reservations/{id}/booking` (`200`). Confirmation retries use
+`POST /api/reservations/{id}/confirmation` (`200`) and require stored verified
+success. Alternatively, cancel an active hold with
+`DELETE /api/reservations/{id}` (`204`). Foreign IDs return `404`; expired or
+otherwise inactive operations return `409`. Detailed examples and DTOs are in
+[API.md](docs/API.md#temporary-seat-reservations).
+
+The five-minute deadline uses PostgreSQL time after acquiring the seat lock.
+Confirmation creates a permanent booking; cleanup and reservation cancellation
+cannot undo it. The scheduler processes up to 100 expired seats per 30-second
+run, while claim paths and expiry-aware reads work even with the scheduler off.
+Optional Spring properties are `reservations.cleanup.enabled` (default `true`)
+and `reservations.cleanup.delay-ms` (default `30000`).
+
+No real payments, Redis, Kafka, hold renewal, general idempotency keys, reservation
+listing, hold quotas, or confirmed-booking cancellation are included. A lost
+hold-creation response has no dedicated recovery mechanism. See the state and
+transaction diagrams in [HLD](docs/HLD.md) and [LLD](docs/LLD.md).
+
+### Payment recovery limits
+
+Gateway calls run outside application transactions. The durable mock ledger
+shares PostgreSQL but commits separately; it does not model an independently
+available real provider. The original key resumes PENDING attempts and retries
+SUCCESS/PENDING booking confirmation. The internal processor independently
+re-verifies provider proof and tolerates duplicate/out-of-order results.
+There is no automatic payment reconciliation worker, operator API, or refund
+workflow. A late extra financial success is retained for investigation, while
+booking uniqueness prevents another allocation. External exactly-once execution,
+real payment security certification, and production readiness are not claimed.

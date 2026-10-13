@@ -89,6 +89,10 @@ class BookingConcurrencyIntegrationTests extends SecurityTestSupport {
 	@AfterEach
 	void removeOnlyThisFixture() {
 		if (showSeatId != null) {
+			jdbcTemplate.update("UPDATE tbooker.reservations SET confirmed_payment_id = NULL WHERE show_seat_id = ?", showSeatId);
+			jdbcTemplate.update("DELETE FROM tbooker.mock_gateway_receipts WHERE request_id IN (SELECT gateway_request_id FROM tbooker.payments WHERE reservation_id IN (SELECT id FROM tbooker.reservations WHERE show_seat_id = ?))", showSeatId);
+			jdbcTemplate.update("DELETE FROM tbooker.payments WHERE reservation_id IN (SELECT id FROM tbooker.reservations WHERE show_seat_id = ?)", showSeatId);
+			jdbcTemplate.update("DELETE FROM tbooker.reservations WHERE show_seat_id = ?", showSeatId);
 			jdbcTemplate.update("DELETE FROM tbooker.bookings WHERE show_seat_id = ?", showSeatId);
 			jdbcTemplate.update("DELETE FROM tbooker.show_seats WHERE id = ?", showSeatId);
 		}
@@ -123,14 +127,26 @@ class BookingConcurrencyIntegrationTests extends SecurityTestSupport {
 							throw new IllegalStateException("Start latch was not released");
 						}
 						var request = HttpRequest.newBuilder()
-								.uri(URI.create("http://127.0.0.1:" + port + "/api/shows/" + showId + "/bookings"))
+								.uri(URI.create("http://127.0.0.1:" + port + "/api/shows/" + showId + "/reservations"))
 								.timeout(Duration.ofSeconds(30))
 								.header("Content-Type", "application/json")
 								.header("Authorization", bearer(userId))
 								.POST(HttpRequest.BodyPublishers.ofString(
 										"{\"showSeatId\":" + showSeatId + "}"))
 								.build();
-						return new BookingAttempt(userId, client.send(request, HttpResponse.BodyHandlers.ofString()));
+						var hold = client.send(request, HttpResponse.BodyHandlers.ofString());
+						if (hold.statusCode() != 201) { return new BookingAttempt(userId, hold); }
+						long reservationId = objectMapper.readTree(hold.body()).get("id").asLong();
+						var payment = client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port
+								+ "/api/reservations/" + reservationId + "/payments"))
+								.timeout(Duration.ofSeconds(30)).header("Authorization", bearer(userId))
+								.header("Idempotency-Key", "race-" + reservationId).header("Content-Type", "application/json")
+								.POST(HttpRequest.BodyPublishers.ofString("{\"method\":\"UPI\"}")).build(), HttpResponse.BodyHandlers.ofString());
+						assertThat(payment.statusCode()).isEqualTo(201);
+						var booking = client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port
+								+ "/api/reservations/" + reservationId + "/booking"))
+								.timeout(Duration.ofSeconds(30)).header("Authorization", bearer(userId)).GET().build(), HttpResponse.BodyHandlers.ofString());
+						return new BookingAttempt(userId, booking);
 					}));
 				}
 				assertThat(ready.await(10, TimeUnit.SECONDS)).as("all 20 workers are ready").isTrue();
@@ -154,7 +170,7 @@ class BookingConcurrencyIntegrationTests extends SecurityTestSupport {
 		}
 
 		assertThat(attempts).hasSize(REQUEST_COUNT);
-		var winners = attempts.stream().filter(attempt -> attempt.response().statusCode() == 201).toList();
+		var winners = attempts.stream().filter(attempt -> attempt.response().statusCode() == 200).toList();
 		var conflicts = attempts.stream().filter(attempt -> attempt.response().statusCode() == 409).toList();
 		assertThat(winners).hasSize(1);
 		assertThat(conflicts).hasSize(REQUEST_COUNT - 1);
@@ -163,7 +179,7 @@ class BookingConcurrencyIntegrationTests extends SecurityTestSupport {
 					.startsWith("application/problem+json");
 			var problem = objectMapper.readTree(conflict.response().body());
 			assertThat(problem.get("status").asInt()).isEqualTo(409);
-			assertThat(problem.get("detail").asText()).isEqualTo("Show seat " + showSeatId + " is already booked");
+			assertThat(problem.get("detail").asText()).isEqualTo("This show seat is held or already booked");
 		}
 		BookingAttempt winner = winners.getFirst();
 		var booking = objectMapper.readTree(winner.response().body());
@@ -203,14 +219,14 @@ class BookingConcurrencyIntegrationTests extends SecurityTestSupport {
 			blocked = jdbcTemplate.queryForObject("""
 					SELECT COUNT(*) FROM pg_stat_activity
 					WHERE datname = current_database() AND wait_event_type = 'Lock'
-					AND query LIKE '%UPDATE tbooker.show_seats%'
+					AND query LIKE '%tbooker.show_seats%' AND query LIKE '%FOR UPDATE%'
 					""", Integer.class);
 			if (blocked == expected) {
 				return;
 			}
 			Thread.sleep(25);
 		}
-		assertThat(blocked).as("all 20 independent requests reached the PostgreSQL update").isEqualTo(expected);
+		assertThat(blocked).as("all 20 independent requests reached the PostgreSQL inventory lock").isEqualTo(expected);
 	}
 
 	private record BookingAttempt(Long userId, HttpResponse<String> response) {

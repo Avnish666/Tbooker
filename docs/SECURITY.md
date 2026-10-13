@@ -1,9 +1,9 @@
-# Authentication and authorization — Phase 6
+# Authentication and authorization — Phases 6–8
 
 The application authenticates local accounts with BCrypt and issues short-lived
 JWT bearer tokens. Spring Security protects booking routes and checks roles;
 booking queries also enforce ownership. Catalogue reads and health remain public.
-There is no Redis, Kafka, payment integration, external identity provider, or
+There is no Redis, Kafka, real payment integration, external identity provider, or
 OAuth authorization-server flow.
 
 ## Account and API lifecycle
@@ -76,8 +76,12 @@ rendered without being replaced by authorization failures.
 | POST `/api/auth/register`, `/api/auth/login` | Public |
 | GET/HEAD catalogue routes under `/api/shows` | Public only for the list, detail, and seat routes |
 | Health endpoints | Public |
-| POST `/api/shows/{showId}/bookings` | USER or ADMIN |
+| POST `/api/shows/{showId}/bookings` | USER or ADMIN; creation now returns `409` |
 | GET `/api/bookings`, `/api/bookings/{bookingId}` | USER or ADMIN, own bookings only |
+| POST `/api/shows/{id}/reservations`; GET/DELETE `/api/reservations/{id}` | USER or ADMIN, own reservation only |
+| POST `/api/reservations/{id}/confirmation` | USER or ADMIN, own hold and verified payment |
+| POST `/api/reservations/{id}/payments` | USER or ADMIN, own active reservation or matching key replay |
+| GET `/api/payments`, `/api/payments/{id}`, `/api/reservations/{id}/booking` | USER or ADMIN, owner-scoped |
 | `/api/admin/**` | ADMIN, reserved namespace |
 | POST/PUT/PATCH/DELETE catalogue paths | ADMIN, after the specific booking rule |
 | Other unmatched requests | Denied by default |
@@ -90,16 +94,16 @@ exists. No test-only production mutation endpoint was introduced.
 
 Booking requests contain only `showSeatId`. A supplied `userId` is rejected as an
 unknown property. The controller derives identity from the validated subject and
-passes it to `BookingService`; it never trusts a body or query parameter for
+passes it to the appropriate service; it never trusts a body or query parameter for
 ownership. Read queries filter by `user_id` in SQL. Detail lookup combines the
 booking ID with the owner ID and returns `404` for missing or foreign bookings,
 avoiding disclosure of another user's booking. ADMIN has no ownership bypass.
 Booking lists are ordered by creation time descending, then ID descending, and
 are currently unpaged.
 
-Authentication occurs before the existing booking transaction. The conditional
-PostgreSQL availability update, READ COMMITTED isolation, rollback boundary, and
-`uq_bookings_show_seat` remain unchanged. Signed requests still contend on the
+Authentication occurs before reservation/payment orchestration. The legacy write
+endpoint cannot bypass payment. Conditional inventory updates, READ_COMMITTED
+isolation, atomic allocation, and `uq_bookings_show_seat` remain the safeguards. Signed requests still contend on the
 same database row; JWT does not replace database concurrency control.
 
 ## JWT configuration and trust boundary
@@ -196,5 +200,44 @@ for executed counts rather than inferring success from this list.
 - TLS termination, secret rotation operations, security audit events, recovery,
   and production monitoring remain deployment work. No penetration test or
   multi-instance security/performance guarantee is claimed.
-- Existing booking limits still apply: no idempotency, booking-specific database
-  lock timeout, scheduling overlap check, holds, cancellation, or payments.
+- Existing booking limits still apply: no hold-creation idempotency, booking-specific
+  database lock timeout, scheduling overlap check, confirmed-booking cancellation,
+  real payment provider, or refunds. Payment keys and confirmation retries are supported.
+
+## Reservation authorization (Phase 7)
+
+`POST /api/shows/*/reservations`, `GET /api/reservations/*`,
+`POST /api/reservations/*/confirmation`, and `DELETE /api/reservations/*` require
+USER or ADMIN. These matchers precede the general ADMIN catalogue-mutation rule.
+`ReservationController` derives the owner exclusively from the validated JWT
+subject. Creation accepts only `showSeatId`; view/confirmation/cancellation use
+owner-scoped queries and return `404` for foreign IDs, including ADMIN callers.
+Confirmed bookings keep the existing owner-scoped read contract.
+
+The JWT encoder/decoder, password checks, public show routes, and role conversion
+are unchanged. Expiry is a database allocation rule, independent of JWT expiry:
+a user still needs a valid token to operate on an active hold. Background cleanup
+has no public HTTP endpoint. Hold quotas and abuse/rate limits are not implemented.
+
+## Payment authorization and trust (Phase 8)
+
+`PaymentController` accepts only method plus a bounded Idempotency-Key; owner comes
+from `@AuthenticationPrincipal Jwt`. Payment status/history and reservation booking
+reads are owner-scoped, with no ADMIN override. Unknown status/amount/owner fields
+are rejected. Missing/invalid tokens fail in the existing resource-server chain.
+
+`PaymentResultProcessor.process(id)` is internal, has no HTTP mapping, and treats
+any notification as a hint to independently query the selected provider. The
+mock receipt is checked against persisted command identity, amount/currency,
+reference and version. A successful financial result alone cannot override an
+expired/cancelled reservation or another owner's inventory. The confirmation
+transaction rechecks both ownership and stored payment proof under the seat lock.
+
+The trust boundary is the application/provider adapter and database permissions,
+not an HTTP callback body or an unguessable numeric ID. Direct privileged SQL or
+compromised application code can falsify mock proof. There are no card/UPI account
+details, real transfers, provider credentials, PCI claims, or payment certification.
+Real providers would require authenticated notifications, independent verification,
+secret management, timeouts, reconciliation/refund procedures, and operational review.
+The default-deny rule rejects public status mutation/callback paths; there is no
+endpoint for a client to turn a deliberately PENDING mock receipt into SUCCESS.

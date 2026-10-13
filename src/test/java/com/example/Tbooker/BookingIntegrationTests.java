@@ -11,6 +11,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -41,7 +42,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest
+@SpringBootTest(properties = "reservations.cleanup.enabled=false")
+@Import(PaymentTestFixture.class)
 @AutoConfigureMockMvc
 @ActiveProfiles("dev")
 @Testcontainers
@@ -57,6 +59,7 @@ class BookingIntegrationTests extends SecurityTestSupport {
 	private final DataSource dataSource;
 	private final ObjectMapper objectMapper;
 	private final Flyway flyway;
+	private final PaymentTestFixture payments;
 
 	private Long showId;
 	private Long userId;
@@ -65,17 +68,20 @@ class BookingIntegrationTests extends SecurityTestSupport {
 
 	@Autowired
 	BookingIntegrationTests(MockMvc mockMvc, JdbcTemplate jdbcTemplate, DataSource dataSource,
-			ObjectMapper objectMapper, Flyway flyway) {
+			ObjectMapper objectMapper, Flyway flyway, PaymentTestFixture payments) {
 		this.mockMvc = mockMvc;
 		this.jdbcTemplate = jdbcTemplate;
 		this.dataSource = dataSource;
 		this.objectMapper = objectMapper;
 		this.flyway = flyway;
+		this.payments = payments;
 	}
 
 	@BeforeEach
 	void resetIsolatedTestDatabase() {
 		showId = jdbcTemplate.queryForObject("SELECT MIN(id) FROM tbooker.movie_shows", Long.class);
+		payments.clear();
+		jdbcTemplate.update("DELETE FROM tbooker.reservations");
 		jdbcTemplate.update("DELETE FROM tbooker.bookings");
 		jdbcTemplate.update("DELETE FROM tbooker.show_seats WHERE show_id <> ?", showId);
 		jdbcTemplate.update("DELETE FROM tbooker.movie_shows WHERE id <> ?", showId);
@@ -92,7 +98,7 @@ class BookingIntegrationTests extends SecurityTestSupport {
 	void createsConfirmedBookingAndCommitsSeatChange() throws Exception {
 		Instant before = Instant.now().minusSeconds(1);
 		var response = book(showId, userId, showSeatId)
-				.andExpect(status().isCreated())
+				.andExpect(status().isOk())
 				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
 				.andExpect(jsonPath("$.id").isNumber())
 				.andExpect(jsonPath("$.userId").value(userId))
@@ -120,7 +126,7 @@ class BookingIntegrationTests extends SecurityTestSupport {
 	@ParameterizedTest
 	@ValueSource(booleans = {false, true})
 	void secondBookingForSameSeatReturnsConflict(boolean differentUser) throws Exception {
-		book(showId, userId, showSeatId).andExpect(status().isCreated());
+		book(showId, userId, showSeatId).andExpect(status().isOk());
 		book(showId, differentUser ? otherUserId : userId, showSeatId)
 				.andExpect(status().isConflict())
 				.andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
@@ -205,33 +211,37 @@ class BookingIntegrationTests extends SecurityTestSupport {
 					.andExpect(status().isInternalServerError())
 					.andExpect(jsonPath("$.detail").value("The request could not be completed"))
 					.andExpect(jsonPath("$.trace").doesNotExist());
-			assertNoBookingOrSeatChange();
+			assertThat(bookingCount()).isZero();
+			assertThat(seatStatus()).isEqualTo("HELD");
+			assertThat(jdbcTemplate.queryForObject("SELECT status FROM tbooker.payments", String.class)).isEqualTo("SUCCESS");
 		}
 		finally {
 			jdbcTemplate.execute("DROP TRIGGER fail_test_booking_insert ON tbooker.bookings");
 			jdbcTemplate.execute("DROP FUNCTION tbooker.fail_test_booking_insert()");
 		}
-		book(showId, otherUserId, showSeatId).andExpect(status().isCreated());
+		Long reservationId = jdbcTemplate.queryForObject("SELECT id FROM tbooker.reservations", Long.class);
+		mockMvc.perform(post("/api/reservations/{id}/confirmation", reservationId)
+				.header("Authorization", bearer(userId))).andExpect(status().isOk());
 		assertThat(bookingCount()).isEqualTo(1);
 		assertThat(seatStatus()).isEqualTo("BOOKED");
 	}
 
 	@Test
 	void uniqueConstraintProtectsSeatEvenIfAvailabilityWasIncorrectlyReset() throws Exception {
-		book(showId, userId, showSeatId).andExpect(status().isCreated());
+		book(showId, userId, showSeatId).andExpect(status().isOk());
 		// Simulate an out-of-band data error. The unique booking constraint is the backstop.
 		jdbcTemplate.update("UPDATE tbooker.show_seats SET status = 'AVAILABLE' WHERE id = ?", showSeatId);
 		book(showId, otherUserId, showSeatId)
 				.andExpect(status().isConflict())
 				.andExpect(jsonPath("$.detail").value("This show seat already has a confirmed booking"));
 		assertThat(bookingCount()).isEqualTo(1);
-		// The second transaction's conditional update must have rolled back as well.
-		assertThat(seatStatus()).isEqualTo("AVAILABLE");
+		// The new hold/payment committed earlier; the failed confirmation must restore HELD.
+		assertThat(seatStatus()).isEqualTo("HELD");
 	}
 
 	@Test
 	void databaseRejectsDuplicateBookingsDirectly() throws Exception {
-		book(showId, userId, showSeatId).andExpect(status().isCreated());
+		book(showId, userId, showSeatId).andExpect(status().isOk());
 		assertThatThrownBy(() -> jdbcTemplate.update("""
 				INSERT INTO tbooker.bookings (user_id, show_seat_id, status, created_at)
 				VALUES (?, ?, 'CONFIRMED', CURRENT_TIMESTAMP)
@@ -249,11 +259,11 @@ class BookingIntegrationTests extends SecurityTestSupport {
 			blocker.commit();
 			int firstStatus = first.get(15, TimeUnit.SECONDS);
 			int secondStatus = second.get(15, TimeUnit.SECONDS);
-			assertThat(List.of(firstStatus, secondStatus)).containsExactlyInAnyOrder(201, 409);
+			assertThat(List.of(firstStatus, secondStatus)).containsExactlyInAnyOrder(200, 409);
 			assertThat(bookingCount()).isEqualTo(1);
 			assertThat(seatStatus()).isEqualTo("BOOKED");
 			assertThat(jdbcTemplate.queryForObject("SELECT user_id FROM tbooker.bookings", Long.class))
-					.isEqualTo(firstStatus == 201 ? userId : otherUserId);
+					.isEqualTo(firstStatus == 200 ? userId : otherUserId);
 		}
 	}
 
@@ -268,7 +278,7 @@ class BookingIntegrationTests extends SecurityTestSupport {
 			var waiting = executor.submit(() -> book(showId, userId, showSeatId).andReturn().getResponse().getStatus());
 			awaitBlockedUpdates(1);
 			blocker.rollback();
-			assertThat(waiting.get(15, TimeUnit.SECONDS)).isEqualTo(201);
+			assertThat(waiting.get(15, TimeUnit.SECONDS)).isEqualTo(200);
 			assertThat(bookingCount()).isEqualTo(1);
 			assertThat(seatStatus()).isEqualTo("BOOKED");
 		}
@@ -281,14 +291,14 @@ class BookingIntegrationTests extends SecurityTestSupport {
 				INSERT INTO tbooker.show_seats (show_id, seat_id, screen_id)
 				SELECT ?, seat_id, screen_id FROM tbooker.show_seats WHERE id = ? RETURNING id
 				""", Long.class, otherShowId, showSeatId);
-		book(showId, userId, showSeatId).andExpect(status().isCreated());
-		book(otherShowId, otherUserId, otherShowSeatId).andExpect(status().isCreated());
+		book(showId, userId, showSeatId).andExpect(status().isOk());
+		book(otherShowId, otherUserId, otherShowSeatId).andExpect(status().isOk());
 		assertThat(bookingCount()).isEqualTo(2);
 	}
 
 	@Test
 	void developmentSeedDoesNotUndoConfirmedBooking() throws Exception {
-		book(showId, userId, showSeatId).andExpect(status().isCreated());
+		book(showId, userId, showSeatId).andExpect(status().isOk());
 		jdbcTemplate.execute(new ClassPathResource("db/dev/R__sample_catalogue.sql")
 				.getContentAsString(StandardCharsets.UTF_8));
 		assertThat(bookingCount()).isEqualTo(1);
@@ -297,7 +307,7 @@ class BookingIntegrationTests extends SecurityTestSupport {
 
 	@Test
 	void repeatedFlywayMigrationsPreserveCatalogueAndConfirmedBooking() throws Exception {
-		book(showId, userId, showSeatId).andExpect(status().isCreated());
+		book(showId, userId, showSeatId).andExpect(status().isOk());
 		var historyBefore = jdbcTemplate.queryForList("SELECT * FROM public.flyway_schema_history ORDER BY installed_rank");
 		var rowsBefore = snapshotApplicationRows();
 		for (int run = 0; run < 3; run++) {
@@ -314,16 +324,23 @@ class BookingIntegrationTests extends SecurityTestSupport {
 
 	private Map<String, List<Map<String, Object>>> snapshotApplicationRows() {
 		Map<String, List<Map<String, Object>>> rows = new LinkedHashMap<>();
-		for (String table : new String[] {"users", "movies", "theatres", "screens", "seats", "movie_shows", "show_seats", "bookings"}) {
+		for (String table : new String[] {"users", "movies", "theatres", "screens", "seats", "movie_shows", "show_seats", "bookings", "reservations", "payments"}) {
 			rows.put(table, jdbcTemplate.queryForList("SELECT * FROM tbooker." + table + " ORDER BY id"));
 		}
+		rows.put("mock_gateway_receipts", jdbcTemplate.queryForList("SELECT * FROM tbooker.mock_gateway_receipts ORDER BY request_id"));
 		return rows;
 	}
 
 	private ResultActions book(Long requestedShowId, Long requestedUserId, Long requestedShowSeatId) throws Exception {
-		return mockMvc.perform(post("/api/shows/{showId}/bookings", requestedShowId)
+		var hold = mockMvc.perform(post("/api/shows/{showId}/reservations", requestedShowId)
 				.header("Authorization", bearer(requestedUserId))
 				.contentType(MediaType.APPLICATION_JSON).content(requestBody(requestedShowSeatId)));
+		if (hold.andReturn().getResponse().getStatus() != 201) { return hold; }
+		Long reservationId = objectMapper.readTree(hold.andReturn().getResponse().getContentAsString()).get("id").asLong();
+		// Preserve direct confirmation failure assertions using genuinely verified mock payment proof.
+		payments.verifyOnly(requestedUserId, reservationId);
+		return mockMvc.perform(post("/api/reservations/{id}/confirmation", reservationId)
+				.header("Authorization", bearer(requestedUserId)));
 	}
 
 	private String requestBody(Long requestedShowSeatId) {
@@ -368,14 +385,14 @@ class BookingIntegrationTests extends SecurityTestSupport {
 			blocked = jdbcTemplate.queryForObject("""
 					SELECT COUNT(*) FROM pg_stat_activity
 					WHERE datname = current_database() AND wait_event_type = 'Lock'
-					AND query LIKE '%UPDATE tbooker.show_seats%'
+					AND query LIKE '%tbooker.show_seats%' AND query LIKE '%FOR UPDATE%'
 					""", Integer.class);
 			if (blocked == expected) {
 				return;
 			}
 			Thread.sleep(25);
 		}
-		assertThat(blocked).as("requests blocked on the PostgreSQL conditional update").isEqualTo(expected);
+		assertThat(blocked).as("requests blocked on the PostgreSQL inventory lock").isEqualTo(expected);
 	}
 
 }
