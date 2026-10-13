@@ -699,3 +699,46 @@ are reused. SRP separates allocation, durable event capture, publication, transp
 listeners, and projection changes. No notification Strategy is needed for a single
 mock channel; the existing payment Strategy remains unchanged. See the complete
 [sequence and recovery model](MESSAGING.md#transaction-boundaries-and-delivery-guarantee).
+
+## Phase 11: the same object graph in independent JVMs
+
+NGINX routes a request to `app-a` or `app-b`. Each replica constructs its own
+`SecurityFilterChain`, controllers, services, repository proxies, Hikari pool,
+`ReservationCleanup`, `OutboxPublisher`, and Kafka listeners through Spring DI.
+No singleton bean or Java monitor coordinates the two processes. Shared database
+rows, constraints, leases, and consumer markers provide that coordination.
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant N as NGINX
+    participant A as app-a ReservationService
+    participant B as app-b ReservationService
+    participant D as Shared PostgreSQL
+    par Request from owner one
+        C->>N: POST reservation, JWT one
+        N->>A: One upstream attempt
+        A->>D: Lock inventory and read database time
+    and Request from owner two
+        C->>N: POST same seat, JWT two
+        N->>B: One upstream attempt
+        B->>D: Wait on same inventory row
+    end
+    A->>D: Insert hold and update inventory then commit
+    A-->>C: 201
+    D-->>B: Lock acquired with committed HELD state
+    B-->>C: 409
+```
+
+The diagram shows one possible winner; either JVM can acquire the row first.
+The lock is acquired by `SeatInventoryService`, inside the calling service
+transaction. `ReservationCleanup` skips locked seats; `OutboxRepository`
+claims/fences publication separately from `OutboxPublisher` broker I/O. Consumer
+projection processors commit deduplication and effects atomically.
+
+Phase 11 adds deployment and verification, not a new domain pattern. Strategy
+(payment), Repository, DTO, Service Layer, DI, transaction proxies, Cache-Aside,
+Transactional Outbox, and Idempotent Consumer remain the relevant patterns.
+SRP keeps routing in NGINX and eligibility in transactional services. The only
+application configuration addition is Micrometer `application`/`instance` tags.
+See [SCALING.md](SCALING.md) for process coordination and failure boundaries.

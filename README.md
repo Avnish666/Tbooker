@@ -10,7 +10,9 @@ confirmation/cancellation, and repeatable confirmation. Phase 8 adds idempotent
 mock UPI/Card payments and requires verified payment for new bookings. Phase 9
 adds optional Redis caching for public catalogue metadata, PostgreSQL fallback,
 and reproducible k6 measurements. Phase 10 adds transactional-outbox booking
-events, Kafka publication, mock notifications, and an idempotent analytics projection. Later
+events, Kafka publication, mock notifications, and an idempotent analytics projection.
+Phase 11 runs two JVMs behind NGINX with shared state, instance metrics, and
+distributed concurrency, recovery, and performance verification. Later
 features are planned in [the roadmap](docs/ROADMAP.md).
 
 ## Stack
@@ -46,11 +48,17 @@ Kafka handles asynchronous booking facts without participating in booking commit
   HTTP health plus database-aware readiness.
 - Verify integration against real PostgreSQL, including 20 contending HTTP
   booking requests repeated three times with fresh fixtures.
+- Run two independent JVMs behind NGINX; verify 100 distributed hold contenders,
+  process termination/restart, optional-service outages, and Kafka group membership.
+
+The component diagram expands one replica. In scaled mode, NGINX selects
+`app-a` or `app-b` before Spring Security; both run this same object graph.
+See the [deployment diagram](docs/SCALING.md#deployment-and-request-path).
 
 ```mermaid
 flowchart LR
     Client[HTTP client] --> Security[Spring Security and JWT validation]
-    subgraph App[Single Spring Boot application]
+    subgraph App[Inside each Spring Boot replica]
         Security --> Controllers[Controllers and DTOs]
         Controllers --> Catalogue[Catalogue services via Spring Cache]
         Catalogue --> Reader[CatalogueReader - cache miss or seat reads]
@@ -86,11 +94,13 @@ flowchart LR
 The repository has one Maven module and one deployable application, organized
 by technical layers. Catalogue and booking responsibilities are separate
 services; domain module boundaries are not enforced by a module framework.
-Docker Compose runs PostgreSQL, Redis, and one KRaft Kafka broker; the Java application runs on the host.
+The original Compose workflow runs shared services for a host Java process.
+`compose.scaled.yaml` separately runs NGINX, two app containers, and shared services;
+see [the deployment diagram and setup](docs/SCALING.md).
 
 | Document | Contents |
 | --- | --- |
-| [HLD](docs/HLD.md) | Requirements, architecture, request flows, bottlenecks, and proposed scaling. |
+| [HLD](docs/HLD.md) | Requirements, architecture, request flows, bottlenecks, and scaling limits. |
 | [LLD](docs/LLD.md) | Class and booking sequence diagrams, responsibilities, interfaces, and actual patterns. |
 | [Database](docs/DATABASE.md) | ER diagram, column dictionary, constraints, indexes, and migrations. |
 | [API](docs/API.md) | Routes, DTO fields, examples, validation, and errors. |
@@ -99,8 +109,25 @@ Docker Compose runs PostgreSQL, Redis, and one KRaft Kafka broker; the Java appl
 | [Booking](docs/BOOKING.md) | Detailed race-condition and transaction explanation. |
 | [Testing](docs/TESTING.md) | Executed test evidence, concurrency protocol, and limitations. |
 | [Messaging](docs/MESSAGING.md) | Outbox, consumers, retries, DLT replay, configuration, and operational limits. |
-| [Performance](docs/PERFORMANCE.md) | Reproducible k6 baseline/cache comparison, measured results, and limits. |
+| [Performance](docs/PERFORMANCE.md) | Cache and one/two-JVM k6 comparisons, measured results, and limits. |
+| [Scaling](docs/SCALING.md) | Two-JVM Compose deployment, NGINX, failover, monitoring, and disposable test runners. |
 | [Roadmap](docs/ROADMAP.md) | Completed phases and future milestones. |
+
+## Local two-instance deployment
+
+Build the verified JAR, set private `.env` values as described below, then run:
+
+```bash
+bash mvnw clean verify
+docker compose -f compose.scaled.yaml up -d --build --wait
+curl --fail http://localhost:8080/actuator/health/readiness
+```
+
+This separate workflow runs NGINX, two application JVMs, PostgreSQL, Redis, and
+Kafka. It publishes only the NGINX loopback port. Do not combine it with the host
+workflow's Compose file. See [SCALING.md](docs/SCALING.md) for limits, monitoring,
+and disposable correctness/load runners; [PERFORMANCE.md](docs/PERFORMANCE.md)
+records measured one/two-instance comparisons.
 
 ## Local setup
 
@@ -409,7 +436,10 @@ all 20 transactions to contend at PostgreSQL. Migration checks call Flyway again
 and verify that migration history and application data remain unchanged.
 
 See [TESTING.md](docs/TESTING.md) for execution details and remaining weaknesses.
-The Phase 10 full run passed **251 tests: 0 failures, 0 errors, 0 skipped**.
+The final Phase 11 Maven rerun passed **251 tests: 0 failures, 0 errors, 0 skipped**.
+Separate real-container checks passed **13 end-to-end cases** (12-case suite plus
+one added in-flight payment check), and **12 k6 measured runs** passed their
+thresholds. See [the retained results and scope](docs/TESTING.md#phase-11-verification).
 It includes all 218 earlier regression cases and 33 PostgreSQL/Kafka messaging cases.
 See the full-run counts in [TESTING.md](docs/TESTING.md#phase-10-verification).
 The separate [k6 comparison](docs/PERFORMANCE.md) records performance evidence;
@@ -469,8 +499,8 @@ Later identity work includes password reset, email verification, and token revoc
 Real provider integration, automated reconciliation, refunds and payment
 operations need a later phase. Redis metadata caching and Kafka booking-event
 processing are implemented. Delivery work still includes
-an application Dockerfile, CI, and
-deployment/backup procedures. See the [roadmap](docs/ROADMAP.md).
+CI and production deployment/backup procedures. The application Dockerfile and
+local NGINX deployment are implemented. See the [roadmap](docs/ROADMAP.md).
 
 The legacy immediate-booking endpoint now returns `409`. A hold-creation retry
 also returns `409` for an allocated seat;
@@ -480,8 +510,8 @@ Direct SQL can make seat status disagree with booking existence, although the
 supported service transaction maintains both atomically. JWTs currently have no
 refresh/revocation flow, role changes wait for token expiry, and auth endpoints
 have no rate limiting. Legacy accounts need a future trusted enrollment flow. The tests establish the described correctness
-properties on one application/database instance, not production performance,
-failover readiness, or a capacity guarantee.
+properties in disposable PostgreSQL tests and a local two-JVM deployment.
+They do not certify multi-host HA, production performance, or capacity.
 
 ## Reservation and mock payment workflow
 

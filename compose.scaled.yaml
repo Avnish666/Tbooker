@@ -1,0 +1,131 @@
+# Standalone configuration: do not combine with compose.yaml (which publishes dev ports).
+x-app: &app
+  image: tbooker:phase11
+  build: .
+  restart: unless-stopped
+  init: true
+  read_only: true
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  mem_limit: 768m
+  cpus: 1.0
+  stop_grace_period: 35s
+  environment: &app-environment
+    SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-tbooker}
+    SPRING_DATASOURCE_USERNAME: ${DB_USERNAME:-tbooker}
+    SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+    SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: ${DB_POOL_SIZE:-20}
+    SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: 2
+    REDIS_HOST: redis
+    REDIS_PORT: 6379
+    KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+    JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET}
+    JWT_ISSUER: ${JWT_ISSUER:-tbooker}
+    JWT_AUDIENCE: ${JWT_AUDIENCE:-tbooker-api}
+    SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-}
+    SERVER_FORWARD_HEADERS_STRATEGY: framework
+    SERVER_SHUTDOWN: graceful
+    SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE: 30s
+    JAVA_TOOL_OPTIONS: -Xms128m -Xmx384m -XX:ActiveProcessorCount=2
+    RESERVATIONS_CLEANUP_DELAY_MS: ${RESERVATION_CLEANUP_MS:-30000}
+    MESSAGING_POLL_MS: ${OUTBOX_POLL_MS:-1000}
+    MESSAGING_TOPIC_CHECK_MS: 10000
+    MESSAGING_METRICS_MS: 5000
+    OUTBOX_LEASE: ${OUTBOX_LEASE:-PT30S}
+  depends_on:
+    postgres: {condition: service_healthy}
+    redis: {condition: service_started}
+    kafka: {condition: service_started}
+
+services:
+  app-a:
+    <<: *app
+    environment:
+      <<: *app-environment
+      INSTANCE_ID: app-a
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-tbooker}?ApplicationName=app-a
+      SPRING_DATASOURCE_HIKARI_POOL_NAME: app-a
+  app-b:
+    <<: *app
+    environment:
+      <<: *app-environment
+      INSTANCE_ID: app-b
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-tbooker}?ApplicationName=app-b
+      SPRING_DATASOURCE_HIKARI_POOL_NAME: app-b
+  nginx:
+    image: nginx:1.28-alpine
+    restart: unless-stopped
+    ports: ['127.0.0.1:${LB_PORT:-8080}:8080']
+    volumes:
+      - ./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./deploy/nginx/upstreams.conf:/etc/nginx/tbooker-upstreams.conf:ro
+    depends_on:
+      app-a: {condition: service_healthy}
+      app-b: {condition: service_healthy}
+    cpus: 0.5
+    mem_limit: 128m
+    healthcheck:
+      test: [CMD, wget, -Y, off, -q, -O, /dev/null, http://127.0.0.1:8080/nginx-health]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+  postgres:
+    image: postgres:17.11-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-tbooker}
+      POSTGRES_USER: ${DB_USERNAME:-tbooker}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+    command: [postgres, -c, max_connections=160, -c, shared_preload_libraries=pg_stat_statements]
+    volumes: [scaled_postgres:/var/lib/postgresql/data]
+    cpus: 1.0
+    mem_limit: 512m
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: [redis-server, --save, '', --appendonly, 'no', --maxmemory, 96mb, --maxmemory-policy, allkeys-lru]
+    cpus: 0.5
+    mem_limit: 128m
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+  kafka:
+    image: apache/kafka:3.9.1
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:19092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:19092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'false'
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx384m
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    volumes: [scaled_kafka:/var/lib/kafka/data]
+    cpus: 1.0
+    mem_limit: 1g
+    healthcheck:
+      test: [CMD, /opt/kafka/bin/kafka-broker-api-versions.sh, --bootstrap-server, localhost:19092]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+volumes:
+  scaled_postgres:
+  scaled_kafka:

@@ -135,3 +135,125 @@ later work. Functional outage and contention behavior is verified separately in
 Phase 10 note: the comparison runner now explicitly disables Kafka workers in its
 isolated catalogue benchmark. The results above remain the original Phase 9
 measurements; they are not Kafka or Phase 10 throughput measurements.
+
+## Phase 11: one versus two JVMs behind NGINX
+
+Executed on 2026-10-13 with `performance/run-scaling.py` and `performance/scaling.js`.
+**All 12 measured runs completed, with zero unexpected failures and no duplicate
+bookings.** Raw k6 summaries, database counts, image/JAR hashes, JVM/pool snapshots,
+and Docker resource samples are retained in
+[2026-10-13-scaling.json](../performance/results/2026-10-13-scaling.json).
+These are new Phase 11 measurements, not a rerun of the Phase 9 cache comparison.
+
+```bash
+bash mvnw clean verify
+python3 performance/run-scaling.py --output /tmp/tbooker-scaling.json
+```
+
+### Equivalent workload and environment
+
+For each workload the runner used ABBA order: **1, 2, 2, 1 JVMs**. Both setups used
+the same NGINX, PostgreSQL, Redis, and Kafka containers on one Docker host (Docker
+reported 5 CPUs and 35,743,784,960 bytes memory). Every run restarted the same app
+image, reset the same disposable database/Redis fixtures, warmed catalogue reads
+for 10 seconds, then measured for 30 seconds, with up to 30 seconds for in-flight
+requests to finish. Fixture reset happened with apps stopped after projections
+drained; normal graceful listener stop retained broker offsets. No development
+volumes were used. Broker/cache/publisher/consumer workers remained enabled.
+
+Each app had a 1-CPU quota, 768 MiB RAM limit, 128–384 MiB heap, and a 20-connection
+pool. Two apps therefore have twice the application CPU/memory/pool budget;
+shared service limits did not change. PostgreSQL had 1 CPU/512 MiB, Redis
+0.5 CPU/128 MiB, Kafka 1 CPU/1 GiB, and NGINX 0.5 CPU/128 MiB. Verification settings
+used 1-second expiry cleanup, 500-ms publication polling, and an 8-second lease
+in both configurations (normal Compose defaults are 30s, 1s, and 30s).
+
+- Catalogue: 20 closed-loop virtual users read the same 100-show DTO list.
+- Mixed: 20 virtual users each issue eight catalogue reads, one unique-seat hold,
+  and one UPI payment that must confirm a booking. A 12,000-seat fixture avoids
+  intended conflicts. Signed JWTs are prepared beforehand; login/BCrypt is excluded.
+- Contention: 100 virtual users repeatedly request one seat. Exactly one hold
+  succeeds per run; remaining calls must conflict. No payments are sent here.
+  This measures rejection throughput after the winner, not booking throughput.
+
+### Measured comparison
+
+RPS, p50, and p95 below are **arithmetic means of the two per-run measurements**
+for each configuration. The latency figures are not pooled percentiles. Request,
+conflict, and booking counts are sums over those two independent runs.
+
+| Workload | JVMs | Requests/s | p50 ms | p95 ms | Unexpected error rate | Expected 409s |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Catalogue | 1 | 531.83 | 15.78 | 89.98 | 0% | 0 |
+| Catalogue | 2 | 894.57 | 13.23 | 61.72 | 0% | 0 |
+| Mixed paid booking | 1 | 102.84 | 94.23 | 956.46 | 0% | 0 |
+| Mixed paid booking | 2 | 202.41 | 45.86 | 442.61 | 0% | 0 |
+| Hot-seat contention | 1 | 115.48 | 660.58 | 2038.04 | 0% | 7,003 |
+| Hot-seat contention | 2 | 178.10 | 490.04 | 1231.25 | 0% | 10,770 |
+
+| Two JVMs versus one | Throughput change | p50 reduction | p95 reduction |
+| --- | ---: | ---: | ---: |
+| Catalogue | +68.21% | 16.19% | 31.41% |
+| Mixed paid booking | +96.83% | 51.34% | 53.72% |
+| Hot-seat contention | +54.23% | 25.82% | 39.59% |
+
+Throughput change is `(two / one - 1) × 100`; latency reduction is
+`(1 - two / one) × 100`. These are observed differences, not statistical
+confidence intervals or guaranteed scaling factors.
+
+### Resources and database observations
+
+CPU is the mean of Docker samples, with 100% representing one logical core.
+App memory is the largest sampled sum of container memory across active replicas;
+it is not heap-only and not a continuous peak. Pool numbers are the maximum
+sampled sums of per-JVM gauges (total / active / pending), collected sequentially.
+The hard pool budget is 20 versus 40; snapshots can miss brief bursts.
+
+| Workload | JVMs | App CPU % | App memory MiB | PostgreSQL CPU % | Pool total / active / pending | DB lock waiters |
+| --- | ---: | ---: | ---: | ---: | --- | ---: |
+| Catalogue | 1 | 96.2 | 367.4 | 1.5 | 7 / 1 / 0 | 0 |
+| Catalogue | 2 | 202.4 | 754.5 | 1.2 | 16 / 4 / 0 | 0 |
+| Mixed paid booking | 1 | 94.5 | 400.3 | 14.8 | 20 / 16 / 0 | 0 |
+| Mixed paid booking | 2 | 178.9 | 788.6 | 24.6 | 29 / 12 / 0 | 1 |
+| Hot-seat contention | 1 | 95.3 | 428.2 | 12.2 | 20 / 20 / 84 | 19 |
+| Hot-seat contention | 2 | 182.4 | 814.8 | 17.0 | 40 / 40 / 63 | 39 |
+
+All requested JVM heap/GC, pool, outbox, and native Kafka lag snapshots were
+available; no sampling errors were recorded. Raw evidence also includes CPU/RAM
+for Redis, Kafka, and NGINX. Shared outbox gauges describe the same database rows
+and must not be summed across replicas. Native consumer lag is not end-to-end
+projection delay.
+
+| Workload | JVMs | HTTP requests | Confirmed bookings | SQL calls | SQL calls / HTTP request |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Catalogue | 1 | 31,920 | 0 | 579 | 0.0181 |
+| Catalogue | 2 | 53,743 | 0 | 1,079 | 0.0201 |
+| Mixed paid booking | 1 | 6,360 | 636 | 45,150 | 7.0991 |
+| Mixed paid booking | 2 | 12,330 | 1,233 | 87,462 | 7.0934 |
+| Hot-seat contention | 1 | 7,005 | 0 | 63,519 | 9.0677 |
+| Hot-seat contention | 2 | 10,772 | 0 | 97,988 | 9.0965 |
+
+SQL calls come from `pg_stat_statements` after resetting statistics before each
+measured run. They include transactions, worker polling, readiness and monitoring
+SQL; they are **not catalogue SELECT counts** and cannot be compared directly
+with the Phase 9 table. More replicas also poll shared state more often. Adding
+replicas is not a database-query reduction mechanism.
+
+### Interpretation and limits
+
+Application CPU samples approach the configured per-replica quotas. Adding a
+second quota improved the measured workloads, while increasing memory, connection,
+and shared-service usage. Hot-seat requests still serialize on one inventory row;
+extra processes cannot create additional valid owners. Expected 409s are excluded
+from unexpected failures and should not be presented as successful bookings.
+
+These short local closed-loop runs do not establish production capacity, an SLA,
+linear scaling, or multi-host availability. The load generator shares the host;
+monitoring and health checks add overhead. Only catalogue reads warm up; payment
+classes/JIT and broker/cache state are not fully steady-state. ABBA reduces simple
+ordering bias but two repetitions cannot establish statistical significance.
+Percentiles combine request types within each workload, not per-route service
+levels. Closed-loop load can hide queue growth under overload. Samples are coarse,
+GC observations cover snapshot intervals, and the test does not isolate Kafka
+capacity or remote-network effects. No outage was injected during these timed
+runs; failure correctness was tested separately in [TESTING.md](TESTING.md).

@@ -1,0 +1,122 @@
+{
+  "phase": 11,
+  "date": "2026-10-13",
+  "result": "BUILD SUCCESS",
+  "command": "bash mvnw -s /workspace/.cache/maven/settings.xml -Dmaven.repo.local=/workspace/.cache/maven/repository clean verify",
+  "note": "Java 21 activated via /workspace/.setup/env.sh; Maven settings/cache paths are cloud-environment specific.",
+  "source_base_commit": "88eadd2b4aa4d5b8bff8869f7f429455a3c6a7e4",
+  "application_config_sha256": "8376698702cfcb8d7f065a0c9060a1d86e21594bcea3e78f519b87356ba84695",
+  "totals": {
+    "tests": 251,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "passed": 251
+  },
+  "classes": [
+    {
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "name": "com.example.Tbooker.BookingConcurrencyIntegrationTests",
+      "seconds": 6.196
+    },
+    {
+      "tests": 32,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "name": "com.example.Tbooker.BookingEventsIntegrationTests",
+      "seconds": 74.584
+    },
+    {
+      "tests": 35,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "name": "com.example.Tbooker.BookingIntegrationTests",
+      "seconds": 6.882
+    },
+    {
+      "tests": 24,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "name": "com.example.Tbooker.CatalogueCacheIntegrationTests",
+      "seconds": 10.728
+    },
+    {
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "name": "com.example.Tbooker.MessagingRecoveryIntegrationTests",
+      "seconds": 16.032
+    },
+    {
+      "tests": 35,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "name": "com.example.Tbooker.PaymentIntegrationTests",
+      "seconds": 8.368
+    },
+    {
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "name": "com.example.Tbooker.ReservationCleanupIntegrationTests",
+      "seconds": 5.558
+    },
+    {
+      "tests": 33,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "name": "com.example.Tbooker.ReservationIntegrationTests",
+      "seconds": 21.934
+    },
+    {
+      "tests": 42,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "name": "com.example.Tbooker.SecurityIntegrationTests",
+      "seconds": 12.465
+    },
+    {
+      "tests": 31,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "name": "com.example.Tbooker.ShowCatalogueIntegrationTests",
+      "seconds": 4.848
+    },
+    {
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "name": "com.example.Tbooker.TbookerApplicationTests",
+      "seconds": 7.203
+    },
+    {
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "name": "com.example.Tbooker.config.JwtConfigurationTests",
+      "seconds": 0.034
+    },
+    {
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "name": "com.example.Tbooker.controller.HealthControllerTests",
+      "seconds": 0.151
+    }
+  ]
+}

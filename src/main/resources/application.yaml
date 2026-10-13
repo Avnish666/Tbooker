@@ -110,6 +110,10 @@ security:
     ttl: ${JWT_TTL:PT15M}
 
 management:
+  metrics:
+    tags:
+      application: tbooker
+      instance: ${INSTANCE_ID:local}
   health:
     redis:
       enabled: false # Optional cache must not make booking readiness depend on Redis.
