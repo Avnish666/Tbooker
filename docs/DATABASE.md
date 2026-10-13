@@ -249,6 +249,7 @@ equality is expired. Neither clock value is a global transaction-ordering sequen
 | [V4__add_user_credentials_and_roles.sql](../src/main/resources/db/migration/V4__add_user_credentials_and_roles.sql) | Add BCrypt hashes and USER/ADMIN roles without changing existing IDs or bookings. |
 | [V5__add_seat_reservations.sql](../src/main/resources/db/migration/V5__add_seat_reservations.sql) | Add HELD inventory, reservation history, partial uniqueness, and booking-link integrity; retain existing confirmed bookings. |
 | [V6__add_mock_payments.sql](../src/main/resources/db/migration/V6__add_mock_payments.sql) | Persist attempts, owner-scoped idempotency, provider proof, separate confirmation state, and mock receipts; preserve unpaid historical bookings. |
+| [V7__add_booking_events.sql](../src/main/resources/db/migration/V7__add_booking_events.sql) | Add transactional outbox, durable consumer deduplication, mock notifications, and the booking-count baseline; requires quiescing old booking writers during upgrade. |
 | [R__sample_catalogue.sql](../src/main/resources/db/dev/R__sample_catalogue.sql) | Opt-in development sample data. |
 
 Flyway applies pending migrations at startup and validates applied checksums.
@@ -412,3 +413,80 @@ explicit change event within application writer transactions when needed, or
 accept expiry-based refresh. Never infer seat ownership or availability from a
 cached show. All inventory, reservation, payment, and booking constraints and
 transaction boundaries are unchanged.
+
+
+## V7 messaging schema
+
+V7 adds four JDBC-managed tables; Hibernate's existing JPA mappings are unchanged.
+
+```mermaid
+erDiagram
+    BOOKINGS ||--o| OUTBOX_EVENTS : confirmation_fact
+    OUTBOX_EVENTS {
+        uuid event_id PK
+        bigint aggregate_id FK
+        varchar event_type
+        integer event_version
+        jsonb payload
+        timestamptz created_at
+        varchar status
+        integer attempts
+        timestamptz next_attempt_at
+        uuid lease_token
+        timestamptz lease_until
+        timestamptz published_at
+        varchar last_error
+    }
+    PROCESSED_EVENTS {
+        varchar consumer_name PK
+        uuid event_id PK
+        bigint booking_id
+        char payload_hash
+        timestamptz processed_at
+    }
+    BOOKING_NOTIFICATIONS {
+        uuid event_id PK
+        bigint booking_id UK
+        bigint user_id
+        varchar status
+        text message
+        timestamptz delivered_at
+    }
+    BOOKING_ANALYTICS {
+        integer id PK
+        bigint confirmed_count
+        timestamptz updated_at
+    }
+```
+
+`outbox_events.aggregate_id` references the permanent booking. Unique
+`(aggregate_id,event_type)` permits one logical confirmation regardless of UUID
+or schema version. V1/type checks and payload identity checks bind the JSON to its
+row; explicit `IS TRUE` also rejects JSON null identities. State checks require
+lease token/deadline only for IN_FLIGHT, and publication time only for PUBLISHED.
+Partial indexes support due PENDING rows and expired IN_FLIGHT leases. No cascade
+removes pending events when a source booking is referenced for deletion.
+
+`processed_events` uses `(consumer_name,event_id)` as its primary key and
+`(consumer_name,booking_id)` uniqueness to reject a second identity for one booking.
+A SHA-256 hash detects changed contents under the same ID. Logical consumer names
+are fixed in `BookingEventProcessor`, independent of configurable Kafka group IDs.
+The insert handles conflicts on either unique key, then reads the event marker
+and verifies its hash; it never silently accepts a different event ID for an
+already-processed booking. READ_COMMITTED makes the committed winning marker
+visible after a concurrent insert finishes waiting.
+Mock notifications store `MOCK_DELIVERED` only; that status denotes a committed
+mock row. Analytics has a checked singleton key and a non-negative count.
+
+Consumer tables intentionally have no source-booking/outbox foreign keys: they
+store consumed facts and must support retained Kafka/DLT replay without a source
+lookup. Only the outbox links to the authoritative booking. Deduplication and the
+consumer's state update are one PostgreSQL transaction. All timestamps are
+`timestamptz`/UTC; eligibility and lease decisions use `clock_timestamp()`.
+
+V7 seeds analytics from existing bookings once, without inventing historical
+events or notifications. Quiesce writes while applying V7 and replacing older
+binaries; old code cannot participate in outbox capture. Repeated migrations do
+not reset counts or markers. Current migration version is 7; historical V3–V6
+upgrade tests remain targeted at their original versions. No retention cleanup
+is implemented; see [MESSAGING.md](MESSAGING.md) for operational consequences.

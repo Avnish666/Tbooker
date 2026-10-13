@@ -1,6 +1,6 @@
 # High-level design
 
-This document describes the implemented backend through Phase 9. Proposed
+This document describes the implemented backend through Phase 10. Proposed
 extensions are explicitly marked as future work. See [LLD](LLD.md) for classes,
 [database design](DATABASE.md) for constraints, and [API](API.md) for contracts.
 
@@ -30,7 +30,7 @@ capacity target has been established.
 ## Current architecture
 
 Tbooker is one Spring Boot application, one Maven module, and one PostgreSQL
-database plus an optional Redis metadata cache. It follows a modular monolith direction, with catalogue and booking
+database plus an optional Redis metadata cache and Kafka for asynchronous booking facts. It follows a modular monolith direction, with catalogue and booking
 responsibilities separated into services. The current code is organized by
 technical layer; domain module boundaries are not enforced by separate modules
 or an architecture framework.
@@ -58,6 +58,11 @@ flowchart LR
         Services --> Inventory[SeatInventoryService]
         Cleanup[ReservationCleanup scheduler] --> Inventory
         Inventory --> Repositories
+        Services --> Recorder[BookingEventRecorder]
+        Recorder --> Outbox[(PostgreSQL outbox, same booking transaction)]
+        Publisher[Leased OutboxPublisher] --> Outbox
+        Consumers[Notification and analytics consumers] --> ProjectionTx[Transactional projection and deduplication]
+        ProjectionTx --> DB
         Services --> Tokens[TokenService and Nimbus JwtEncoder]
         Services --> Repositories[Spring Data JPA repositories]
         Repositories --> Persistence[Hibernate and HikariCP]
@@ -67,15 +72,19 @@ flowchart LR
     end
     Security --> Health
     Catalogue --> Redis[(Redis DTO caches)]
+    Publisher --> Kafka[(Kafka booking-confirmed)]
+    Kafka --> Consumers
+    Consumers --> DLT[(Dead Letter Topic)]
     Persistence --> DB[(PostgreSQL)]
     Mock --> DB
     Flyway --> DB
     Health -. Actuator database health .-> DB
 ```
 
-For local development, Docker Compose runs PostgreSQL and Redis; the Java
-application runs on the host. There is no application Dockerfile, deployed load
-balancer, message broker, or separate worker in the repository.
+For local development, Docker Compose runs PostgreSQL, Redis, and a single KRaft
+Kafka node; the Java application runs on the host. Publisher, consumers, and
+schedulers remain inside the monolith. There is no application Dockerfile or
+deployed load balancer.
 
 ## Main components
 
@@ -95,7 +104,11 @@ balancer, message broker, or separate worker in the repository.
 | `PaymentService` / `PaymentTransactions` | Orchestrate attempts outside transactions; persist owner-scoped idempotency, outcomes, and read DTOs in short transactions. |
 | `PaymentResultProcessor` | Verify canonical provider receipts, persist outcomes, and attempt payment-gated confirmation or flag reconciliation. |
 | `PaymentStrategyRegistry` / mock strategies | Select injected UPI/Card behavior; use durable mock receipts with stable operation IDs. |
-| PostgreSQL | Store ten domain tables plus the mock provider ledger; enforce identities, relationships, checks, and uniqueness. |
+| PostgreSQL | Store ten domain tables, the mock provider ledger, and four messaging/projection tables; enforce identities, relationships, checks, and uniqueness. |
+| `BookingEventRecorder` / `OutboxRepository` | Atomically record confirmations, claim leased work, and fence publication state updates. |
+| `OutboxPublisher` | Publish outside database transactions; retry and recover leases. |
+| Kafka / `BookingEventListeners` | Deliver each fact independently to notification and analytics groups; recover failed records through the DLT. |
+| `BookingEventProcessor` | Commit consumer deduplication and mock notification/count updates together. |
 | Flyway | Apply versioned schema changes and, only under `dev`, repeatable sample data. |
 | `ApiExceptionHandler` | Translate domain exceptions and selected database failures into Problem Details. |
 | Health endpoints | Lightweight HTTP health plus Actuator liveness and database-aware readiness. |
@@ -121,7 +134,7 @@ checks ownership/expiry under the inventory lock and stores a PENDING attempt.
 The selected strategy executes outside that transaction and verifies a durable
 mock receipt. A second transaction records the financial outcome. Only verified
 SUCCESS triggers a third transaction that checks the active hold again and
-commits inventory, booking, reservation, and confirmation status together.
+commits inventory, booking, reservation, confirmation status, and one outbox event together.
 Payment creation returns `201`; a replay returns `200` with the current stored
 payment state. A payment resource can be SUCCESS while confirmation is PENDING
 or RECONCILIATION_REQUIRED; clients must inspect both fields. See the
@@ -134,8 +147,9 @@ for ownership. See the [security flow](SECURITY.md#spring-security-filter-chain)
 
 ## Database choice and consistency
 
-PostgreSQL fits the relational model and the need to coordinate two writes in
-one transaction. Foreign keys prevent dangling references, composite foreign
+PostgreSQL fits the relational model and the need to commit inventory, booking,
+reservation/payment links, and the outbox fact in one transaction. Foreign keys
+prevent dangling references, composite foreign
 keys prevent cross-screen inventory, and unique constraints protect identifiers
 within their intended scope. PostgreSQL is also used by Testcontainers, so tests
 exercise the database's actual locking and SQL semantics.
@@ -309,8 +323,8 @@ No scheduler is needed for Redis TTL expiry. Redis is never used as a seat lock.
 
 Cache get/put/evict failures, including malformed cached JSON, log a warning and
 increment Micrometer `catalogue.cache.errors` counters tagged by cache/operation.
-Counters are registered in-process; no metrics HTTP endpoint or exporter is
-configured in this phase. Only health remains publicly exposed from Actuator.
+Counters are registered in-process. Phase 10 exposes metrics to ADMIN JWTs only;
+no exporter/dashboard is configured. Health remains public with details hidden.
 Reads fall back to the existing database path; cache failure never means a domain
 write succeeded. Connect and command timeouts default to 200 ms. A miss during an
 outage can incur both get and put timeouts. There is no circuit breaker or miss
@@ -332,14 +346,34 @@ After-commit dependency lookups need an additional database connection while the
 writer's resources are being released; future write-heavy administration must
 budget the connection pool accordingly.
 
-## Kafka — future work
+## Kafka and asynchronous booking projections
 
-**Kafka:** Future notifications or analytics could consume booking events after
-commit. A transactional outbox would insert an event in the same database
-transaction as the booking; a separate publisher would deliver it to Kafka.
-This avoids a database-plus-broker dual write in the request transaction. Such a
-design must handle at-least-once delivery, idempotent consumers, ordering needs,
-retries, and replay. No outbox table, publisher, topic, or consumer exists today.
+Phase 10 implements the transactional outbox and independent mock notification
+and analytics consumer groups. Kafka is downstream of the PostgreSQL commit;
+a broker outage delays projections without preventing successful booking commits.
+A confirmed booking produces exactly one logical V1 event, while physical Kafka
+publication remains at-least-once. Producer idempotence does not eliminate the
+crash window between broker acknowledgment and the outbox state update.
+
+Publisher replicas use short `SKIP LOCKED` claims with database-time leases and
+fencing tokens. They hold no row locks while sending. Consumer replicas share
+partitions within each group and use durable `(consumer,eventId)` markers plus
+projection changes in one transaction. Retries are bounded for consumers; failed
+records reach an acknowledged DLT before source offsets advance. Publisher retries
+continue with capped backoff to retain recoverable work.
+
+These projections are eventually consistent and can lag booking responses. The
+analytics counter is initialized from existing bookings during V7 and increments
+only when new events commit in that consumer. Mock delivery means a persisted row,
+not an email. Schemas, diagrams, partition/group behavior, replay instructions,
+and failure boundaries are in [MESSAGING.md](MESSAGING.md).
+
+New bottlenecks include a growing outbox/dedup ledger, producer backlog during
+outages, serial analytics-counter updates, and consumer partition capacity. Kafka
+is configured as one local node, not a demonstrated HA deployment. Retention,
+TLS/ACLs, alerts, archiving, and migration rollout require operational decisions.
+Kafka connectivity health is separate from booking readiness; native Kafka lag
+and application counters are available through ADMIN-protected Actuator metrics.
 
 Real provider integration needs authenticated callbacks, provider idempotency,
 timeout/uncertain-result handling, reconciliation automation, and refund policy.

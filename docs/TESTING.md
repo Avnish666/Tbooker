@@ -1,9 +1,10 @@
 # Integration and security verification
 
-The current suite verifies Phases 1–9, including payment-gated bookings and optional
-Redis catalogue caching. Historical phase results are retained below; the final
-section records Phase 9 verification. Database/concurrency tests use PostgreSQL
-Testcontainers; cache tests additionally use an isolated Redis container.
+The current suite verifies Phases 1–10, including payment-gated bookings, Redis
+catalogue caching, and Kafka booking events. Historical phase results are retained
+below; the final section records Phase 10 verification. Database/concurrency tests
+use PostgreSQL Testcontainers; cache and messaging tests additionally use isolated
+Redis and Kafka containers respectively.
 
 ## Implementation review
 
@@ -18,8 +19,9 @@ The supported Phase 8 allocation path has these safeguards:
 4. Gateway calls occur outside application transactions. Independent verification
    persists financial outcome in its own transaction before booking confirmation.
 5. `ReservationService.confirmLocked` checks active owned hold and SUCCESS proof,
-   then changes inventory, inserts booking, and links reservation/payment in one
-   transaction. Failures roll back allocation without erasing financial success.
+   then changes inventory, inserts booking, links reservation/payment, and records
+   the outbox fact in one transaction. Failures roll back allocation and the event
+   without erasing financial success.
 6. Permanent booking uniqueness, one-HELD and one-PENDING partial uniqueness, and
    composite ownership FKs are database backstops. Stale/equal-version contradictory
    provider results cannot overwrite committed progress.
@@ -198,12 +200,13 @@ penetration test, throughput benchmark, or failover certification.
 - JWT identity and ownership are now verified. Token revocation/refresh, rate
   limiting, email verification, password reset, and legacy enrollment are absent;
   existing tokens retain their roles until expiry. See [SECURITY.md](SECURITY.md).
-- These tests use one application instance and one PostgreSQL instance. They do
-  not simulate application crashes, database failover, network partitions, or
-  production traffic. The 24-connection test setting is not a production pool
-  sizing recommendation or a throughput/latency benchmark.
+- Tests use one application context at a time and disposable database instances.
+  Phase 10 recreates publisher objects at durable crash boundaries, runs competing
+  publisher objects, and pauses real brokers; it does not kill JVMs or verify a
+  multi-host deployment, database failover, or production traffic. The 24-connection
+  test setting is not a production pool sizing recommendation or a benchmark.
 
-The remaining operational limitations are deferred beyond Phase 8.
+The remaining operational limitations are deferred beyond Phase 10.
 
 ## Phase 7 verification
 
@@ -404,3 +407,111 @@ backend instances. In-process invalidation events are not durable, race-driven
 metadata staleness remains TTL-bounded, and Redis outages can amplify SQL load.
 Performance evidence is separately recorded in [PERFORMANCE.md](PERFORMANCE.md);
 passing correctness tests is not evidence of production capacity.
+
+
+## Phase 10 verification
+
+On **2026-10-13 at 07:16:44 UTC**, the full Maven wrapper `clean verify` completed
+with **BUILD SUCCESS: 251 passed, 0 failures, 0 errors, 0 skipped**. It built
+`target/Tbooker-0.0.1-SNAPSHOT.jar`. All 218 Phase 1–9 cases and 33 new messaging
+cases executed. Java 21, Docker, PostgreSQL 17.11, Redis 7.4, and Kafka 3.9.1 were
+available; no tests were disabled or unavailable. The exact cloud invocation was:
+
+```bash
+source /workspace/.setup/env.sh
+bash mvnw -s /workspace/.cache/maven/settings.xml \
+  -Dmaven.repo.local=/workspace/.cache/maven/repository clean verify
+```
+
+| Test class | Passed | Failed | Errors | Skipped |
+| --- | ---: | ---: | ---: | ---: |
+| `BookingConcurrencyIntegrationTests` | 3 | 0 | 0 | 0 |
+| `BookingEventsIntegrationTests` | 32 | 0 | 0 | 0 |
+| `BookingIntegrationTests` | 35 | 0 | 0 | 0 |
+| `CatalogueCacheIntegrationTests` | 24 | 0 | 0 | 0 |
+| `MessagingRecoveryIntegrationTests` | 1 | 0 | 0 | 0 |
+| `PaymentIntegrationTests` | 35 | 0 | 0 | 0 |
+| `ReservationCleanupIntegrationTests` | 1 | 0 | 0 | 0 |
+| `ReservationIntegrationTests` | 33 | 0 | 0 | 0 |
+| `SecurityIntegrationTests` | 42 | 0 | 0 | 0 |
+| `ShowCatalogueIntegrationTests` | 31 | 0 | 0 | 0 |
+| `TbookerApplicationTests` | 4 | 0 | 0 | 0 |
+| `JwtConfigurationTests` | 8 | 0 | 0 | 0 |
+| `HealthControllerTests` | 2 | 0 | 0 | 0 |
+| **Total** | **251** | **0** | **0** | **0** |
+
+Surefire XML in `target/surefire-reports` supplied these counts. Full local output
+is `/tmp/tbooker-phase10-clean-verify-complete.log`; neither build artifacts nor
+logs are committed. The cloud-specific Maven settings/cache are optional locally.
+A focused messaging run is:
+
+```bash
+bash mvnw -Dtest=BookingEventsIntegrationTests,MessagingRecoveryIntegrationTests test
+```
+
+`BookingEventsIntegrationTests` uses real PostgreSQL/Kafka, actual paid confirmation
+through MockMvc and JWT validation, and disabled automatic polling for deterministic
+failure injection. Its 32 cases cover:
+
+- Exactly one logical event, matching payload/booking time, repeat confirmation,
+  and measured publication delay.
+- Rollback on outbox insertion and deferred commit failures, and no event after
+  payment failure. Verified financial SUCCESS survives allocation rollback.
+- Runtime broker pause: booking still commits, readiness stays UP, messaging health
+  becomes DOWN, send failure schedules retry, and recovery delivers the event.
+  A separate JDBC NOWAIT lock proves no outbox row lock is held during the send.
+- Twenty duplicate Kafka deliveries and three independent 20-thread PostgreSQL
+  consumer races; one notification, one count increment, and one marker per group.
+- Transient failures in both projections roll back markers/effects and then retry
+  successfully. Exhausted retries reach the DLT; replay updates only the failed
+  projection and leaves the successful projection unchanged.
+- Seven poison variants, including malformed/missing/unsupported fields, wrong
+  key, tombstone, invalid bytes, and a near-limit payload. Raw failed bytes and
+  origin/group headers survive DLT delivery; subsequent valid records proceed.
+- DLT unavailability prevents committing past the failed source offset; recreating
+  the DLT resumes safe recovery and processing.
+- Publisher recreation after lease claim and after broker acceptance; both recover
+  from persisted state, preserving event IDs and deduplicated effects.
+- Competing publishers skip locked work, recover the remaining row, and preserve
+  all eight events. Stale lease tokens cannot overwrite a later publisher's state.
+- Broker acceptance followed by a database state-update failure leaves a reclaimable
+  lease and emits the failure metric; retry does not repeat projection effects.
+- Outbox logical uniqueness and JSON-null identity checks; reused event/booking
+  identities are dead-lettered without changing committed projections.
+- NEVER propagation rejects publication from an ambient database transaction.
+- Metrics routes return 401 without a JWT, 403 for USER, and 200 for ADMIN.
+- V6-to-V7 upgrade preserves historical bookings, seeds analytics without fake
+  historical events, validates checksums, and repeated migration executes nothing.
+
+`MessagingRecoveryIntegrationTests` pauses Kafka before Spring initialization.
+The application starts and confirms a paid booking, records a backlog gauge and
+publish failures, then recovers through its actual schedulers after Kafka resumes.
+Topic provisioning, publication, both projections, backlog drain, publication delay,
+and native consumer lag metrics are observed without manually invoking a worker.
+
+The new suite initially exposed an intermittent duplicate-consumer error: the
+marker insert targeted only `(consumer_name,event_id)`, while an identical racing
+insert could violate the separate booking unique index. It now arbitrates both
+unique constraints and validates the winning marker/hash in a fresh READ_COMMITTED
+snapshot. Three repeated races and rejection of a different event ID for the same
+booking cover this fix. The final full run above contains the corrected code.
+
+Each messaging class owns disposable Kafka/PostgreSQL containers. Tests stop
+listeners before resetting fixtures, delete only their broker's old test records,
+wait for actual committed offsets, bound asynchronous waits, and close application
+contexts before containers. Existing tests disable Kafka workers but still record
+outbox facts; fixtures remove outbox references before bookings. Existing migration
+upgrade tests remain targeted at their original schema versions.
+
+The single-node Compose KRaft service was also started in an isolated temporary
+Compose project: its health check and broker topic-list command succeeded, and
+only that project's resources were removed afterward. Documentation links, event
+schema JSON, and all 18 Mermaid diagrams were checked separately.
+
+Limitations: publisher objects are recreated at durable crash boundaries; JVM/host
+processes are not killed. Competing publisher objects share one application process.
+Broker pauses and SQL failures do not certify multi-host failover or every network
+partition. No Kafka throughput/latency benchmark, production HA, real email delivery,
+retention cleanup, automatic DLT replay, or external exactly-once guarantee is claimed.
+Historical Phase 9 k6 results were not rerun; the catalogue benchmark runner disables
+messaging workers to keep its workload focused.

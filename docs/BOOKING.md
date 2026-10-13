@@ -1,4 +1,4 @@
-# Reservations, verified payments, and permanent bookings
+# Reservations, verified payments, permanent bookings, and events
 
 New bookings follow hold → mock payment → verified confirmation. The legacy
 `POST /api/shows/{showId}/bookings` now returns `409` for otherwise valid creation;
@@ -60,9 +60,11 @@ WHERE id = :seatId AND status = 'HELD';
 One affected row authorizes booking insertion. `BookingRepository.saveAndFlush`
 inserts the CONFIRMED booking; `ReservationRepository.confirm` conditionally links
 booking/payment IDs and changes HELD to CONFIRMED; `PaymentRepository.markConfirmed`
-changes the payment's confirmation state. All four writes commit together.
-A failure at any point restores HELD/no booking while preserving the prior
-financial SUCCESS. Flushing checks constraints but is not a commit.
+changes the payment's confirmation state. `BookingEventRecorder.confirmed` then
+records one `BookingConfirmed` V1 outbox fact through JDBC in the same transaction.
+All five writes commit together. A failure at any point restores HELD/no booking
+and no event while preserving the prior financial SUCCESS. Flushing checks
+constraints but is not a commit. Kafka is never called in this transaction.
 
 The unconditional `uq_bookings_show_seat` remains the final duplicate-booking
 backstop. Composite FKs enforce reservation/booking owner and seat identity, and
@@ -72,8 +74,23 @@ JPA state to avoid decisions from entities read before waiting on a lock.
 A reservation confirmed earlier returns the same booking on retry. Historical
 Phase 7 confirmations can have no payment; they remain historical reads, not a
 new unpaid write path. Concurrent duplicate confirmations cannot create another
-booking. If another payment already confirmed this reservation, a late additional
+booking or logical event. If another payment already confirmed this reservation, a late additional
 SUCCESS is flagged for reconciliation rather than linked to that booking.
+
+## Asynchronous confirmation effects
+
+After commit, `OutboxPublisher` claims due events in a short PostgreSQL transaction
+using SKIP LOCKED and a persisted lease. It sends outside the transaction, keyed
+by booking ID, and marks PUBLISHED only after acknowledgment with the matching
+lease token. Kafka downtime leaves a confirmed booking and recoverable backlog.
+A crash after broker acceptance can cause resend with the same event ID.
+
+Independent consumer groups persist mock notification status and increment the
+analytics projection. Each marker and effect commit together before offset commit;
+duplicate deliveries are harmless to these database effects. These are eventual
+effects, not a prerequisite for successful booking or exactly-once external email.
+See [MESSAGING.md](MESSAGING.md) for bounded retries, DLT handling, replay,
+multi-instance behavior, and the V7 upgrade procedure.
 
 ## Expiration and cancellation races
 

@@ -130,3 +130,8 @@ per configuration and brief warmups do not establish statistical confidence,
 long-term GC behavior, scalability, or an SLA. Further load scenarios belong to
 later work. Functional outage and contention behavior is verified separately in
 [TESTING.md](TESTING.md#phase-9-verification).
+
+
+Phase 10 note: the comparison runner now explicitly disables Kafka workers in its
+isolated catalogue benchmark. The results above remain the original Phase 9
+measurements; they are not Kafka or Phase 10 throughput measurements.

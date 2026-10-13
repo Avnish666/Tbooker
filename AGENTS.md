@@ -133,8 +133,8 @@
 ## Phase 8 payment conventions
 
 - Mock payments are authorized in Phase 8; Phase 9 additionally permits Redis
-  catalogue caching. Real gateways, Kafka, refunds, and confirmed-booking
-  cancellation are not implemented.
+  catalogue caching, and Phase 10 adds Kafka booking events. Real gateways, refunds,
+  and confirmed-booking cancellation are not implemented.
 - Read the payment sections of HLD, LLD, DATABASE, API, and DECISIONS before edits.
 - Use injected PaymentStrategy implementations and the Spring-managed registry.
   Gateway orchestration must remain outside application transactions (NEVER).
@@ -167,3 +167,24 @@
   domain/database exceptions or make readiness/allocation depend on Redis.
 - Keep Redis tests isolated in disposable containers. Run the full suite and use
   the k6 comparison for performance claims; never equate local RPS with capacity.
+
+
+## Phase 10 messaging conventions
+
+- Read `docs/MESSAGING.md` before changing booking event capture or Kafka processing.
+- Every new confirmed booking and its unique outbox fact must commit together.
+  Never publish to Kafka inside the booking transaction or skip capture when Kafka
+  workers are disabled. Preserve the legacy confirmed-booking retry behavior.
+- Use short SKIP LOCKED lease claims, database time, and fenced state updates.
+  Never hold a database transaction/row lock while waiting for a broker acknowledgment.
+- Retain stable event IDs across retries; transport is at-least-once. Commit each
+  consumer marker and projection change together before committing its Kafka offset.
+- Never discard a poison record or advance its offset when DLT publication fails.
+  Preserve raw failed bytes and group/offset diagnostics without logging secrets.
+- Health is public; Actuator metrics require ADMIN. Kafka failure must not fail
+  PostgreSQL-based booking readiness. No real emails, microservices, or new gateways.
+- Use real Kafka/PostgreSQL tests for retries, lease recovery, deduplication, and
+  crash boundaries. Document simulated publisher restart separately from JVM/host failure.
+- Existing regressions disable Kafka workers but still exercise outbox capture.
+  Keep test cleanup aware of the outbox FK; never add production cascade deletion
+  just to simplify fixtures. Do not rewrite applied versioned migrations.

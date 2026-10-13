@@ -24,6 +24,7 @@ public class PaymentTestFixture {
         return attempt.id();
     }
     public void clear() {
+        jdbc.update("DELETE FROM tbooker.outbox_events");
         jdbc.update("UPDATE tbooker.reservations SET confirmed_payment_id = NULL");
         jdbc.update("DELETE FROM tbooker.payments");
         jdbc.update("DELETE FROM tbooker.mock_gateway_receipts");

@@ -34,9 +34,10 @@ public class ReservationService {
 	private final BookingRepository bookings;
 	private final SeatInventoryService inventory;
 	private final PaymentRepository payments;
+	private final BookingEventRecorder events;
 
 	public ReservationService(ReservationRepository reservations, ShowSeatRepository seats,
-			MovieShowRepository shows, UserRepository users, BookingRepository bookings, SeatInventoryService inventory, PaymentRepository payments) {
+			MovieShowRepository shows, UserRepository users, BookingRepository bookings, SeatInventoryService inventory, PaymentRepository payments, BookingEventRecorder events) {
 		this.reservations = reservations;
 		this.seats = seats;
 		this.shows = shows;
@@ -44,6 +45,7 @@ public class ReservationService {
 		this.bookings = bookings;
 		this.inventory = inventory;
 		this.payments = payments;
+		this.events = events;
 	}
 
 	@Transactional(isolation = Isolation.READ_COMMITTED)
@@ -119,7 +121,9 @@ public class ReservationService {
 		if (reservations.confirm(id, userId, booking.getId(), paymentId, now) != 1 || payments.markConfirmed(paymentId) != 1) {
 			throw new ReservationConflictException("This reservation is no longer active");
 		}
-		return bookingResponse(bookings.findById(booking.getId()).orElseThrow());
+		var response = bookingResponse(bookings.findById(booking.getId()).orElseThrow());
+		events.confirmed(response); // Same transaction as inventory, booking, reservation, and payment link.
+		return response;
 	}
 
 	@Transactional(readOnly = true)
