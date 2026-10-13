@@ -592,3 +592,87 @@ hot-seat run. These are load runs, not additional JUnit test methods. All 20
 Mermaid diagrams parsed successfully, and local documentation links were checked.
 Docker Compose health/startup/port smoke checks are included in the end-to-end
 runner; there is no invented separate smoke-test count.
+
+## Phase 12B deployment verification — 2026-10-13
+
+Executed on the Phase 12B working tree based on `336cc15` (Phase 12A merged),
+using Java 21, Docker 28.4.0, and Compose 2.40.3 on Linux. No application source
+or applied migration changed. The source-built image ran two real JVMs, pinned
+PostgreSQL/Redis/Kafka images, and NGINX on the new internal service network.
+
+| Final verification | Passed | Failed/errors | Skipped | Evidence |
+| --- | ---: | ---: | ---: | --- |
+| Maven `clean verify` | 251 | 0 | 0 | [Surefire count summary](../verification/results/2026-10-13-phase12b-maven.json) |
+| Existing distributed suite | 13 | 0 | 0 | [Raw report](../verification/results/2026-10-13-phase12b-multi-instance.json) |
+| New deployment/recovery runner | 8 | 0 | 0 | [Raw report](../verification/results/2026-10-13-phase12b-deployment.json) |
+| Host Java/Compose smoke checks | 2 | 0 | 0 | [Raw report](../verification/results/2026-10-13-phase12b-host-smoke.json) |
+
+Maven finished at `2026-10-13T17:58:08Z` with BUILD SUCCESS; all 13 Surefire XML
+class reports were aggregated independently. The cloud command supplied existing
+Maven settings/cache paths and disabled MockMvc request dumps. The Docker build
+packages source without tests; its success is separate from the Maven result.
+
+Reproduce the automated suites from the repository root:
+
+```bash
+./mvnw clean verify --batch-mode --no-transfer-progress
+python3 verification/deployment.py --output /tmp/phase12b-deployment.json
+python3 verification/multi_instance.py --output /tmp/phase12b-distributed.json
+```
+
+The deployment runner verified:
+
+- Six healthy services, NGINX as the only published port, and internal networking.
+- Empty-volume V1–V7 order and exactly one opt-in sample migration across two JVMs.
+- Real registration/login; the same issued JWT worked on both JVMs. Missing or
+  invalid tokens returned 401, USER metrics access 403, and foreign booking 404.
+- Paid reservation confirmation, both-app and one-app restarts, and unchanged
+  permanent booking/inventory/payment rows and Flyway history.
+- PostgreSQL stop/start: readiness returned 503 during the outage, then both pools
+  reconnected and existing bookings remained readable.
+- Redis and Kafka pauses while explicitly restarting a backend. Readiness and
+  new paid bookings still worked; Redis reads fell back to PostgreSQL and Kafka
+  backlog/projections recovered after unpause.
+- `down` without volume removal, recreation of all six containers on the retained
+  volumes, unchanged Flyway history/bookings, and payment-key retry returning 200
+  for the same booking. The private password, signing key, and JWT were absent
+  from the recreated stack's logs.
+
+The existing distributed suite again forced **100 database lock waiters** (50 per
+JVM): one 201, ninety-nine 409s, one booking, and twenty successful confirmation
+retries. Kafka membership had two JVMs per distinct notification/analytics group,
+with all three partitions assigned; publisher death after acknowledgment recovered.
+Backend fault checks observed one 504 among 20 reads, one 504 during explicit
+payment attempts, and three 502s while restarting. NGINX made no automatic replay.
+Killing a JVM before payment insertion returned 502 and left zero attempts;
+explicit same-key retries returned 201 then 200. These are expected failure-boundary
+observations, not a zero-error failover claim.
+
+The additional host smoke used a fresh, separate `compose.yaml` project and the
+Maven-built JAR on the host with private generated credentials and random ports.
+PostgreSQL/Redis/Kafka and both readiness/messaging health passed. Without a dev
+profile, V1–V7 initialized, `/api/shows` returned an empty list, users remained
+empty, and no sample migration was applied. Its temporary script/logs were under
+`/tmp`; the supported manual host commands remain in the README.
+
+Compose syntax/config checks passed for both files, missing DB_PASSWORD/JWT_SECRET
+produced helpful failures, `.env` remains ignored, and documentation links/Python
+syntax/`git diff --check` passed. The runtime was inspected as UID 10001 with no
+builder settings, custom CA, `.env`, or credential/proxy environment baked in.
+
+Earlier attempts are **not** counted as passed: one deployment attempt stopped
+before tests because an optional Maven settings mount left an empty cache file
+(0 passed, 1 setup failure, 8 unrun). The mount was moved outside the cache. The
+next attempt passed five cases before `compose up` tried to restart a paused
+Redis dependency (1 failure, 2 unrun). The runner now uses the documented backend
+`restart` command; the final fresh-project run passed all eight. This is a Compose
+paused-container control limitation, documented with the `--no-deps` alternative.
+
+A cold Docker build in this cloud environment needed its existing trusted proxy,
+CA, and Maven settings via build-only inputs. The source image built successfully
+with TLS verification intact, and subsequent standard Compose builds used the
+warm dependency cache. This does not establish cold direct Internet access in
+this restricted environment. No GitHub-hosted deployment, new benchmark,
+multi-host failover, volume-loss recovery, or production hardening was tested.
+All created test stacks/volumes were disposable and removed by their owners;
+no developer data was deleted. See [DEPLOYMENT.md](DEPLOYMENT.md).

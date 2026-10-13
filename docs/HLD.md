@@ -1,6 +1,6 @@
 # High-level design
 
-This document describes the implemented backend through Phase 11. Proposed
+This document describes the implemented backend and local deployment through Phase 12B. Proposed
 extensions are explicitly marked as future work. See [LLD](LLD.md) for classes,
 [database design](DATABASE.md) for constraints, and [API](API.md) for contracts.
 
@@ -88,7 +88,7 @@ flowchart LR
 For local development, Docker Compose runs PostgreSQL, Redis, and a single KRaft
 Kafka node; the Java application runs on the host. Publisher, consumers, and
 schedulers remain inside the monolith. The separate `compose.scaled.yaml` workflow
-runs two replicas behind NGINX using the runtime Dockerfile. Both replicas share
+runs two replicas behind NGINX using the multi-stage source-build Dockerfile. Both replicas share
 PostgreSQL, Redis, and Kafka. See [SCALING.md](SCALING.md) for the deployment
 diagram, resource budgets, failure boundaries, and monitoring.
 
@@ -446,3 +446,17 @@ It models durable failure boundaries, not real independent provider storage,
 network partitions, payment security certification, or production readiness.
 Phase 11 exercises these locks and retries across two real JVMs, including
 backend termination/restart. Real payment-network failure remains untested.
+
+
+## Phase 12B reproducible deployment
+
+The standalone Compose stack pins its base/service images by digest and builds
+both replicas from the same source without a pre-existing host JAR. NGINX alone
+joins the edge bridge and exposes loopback HTTP; apps and shared services use an
+internal network. PostgreSQL/Kafka named volumes retain authoritative state and
+broker logs; Redis intentionally loses only cached metadata on recreation.
+Flyway serializes same-version startup migrations before readiness. Schema
+upgrades require a quiesced-writer/backup plan, not an assumed rolling upgrade.
+See [DEPLOYMENT.md](DEPLOYMENT.md) for configuration, restart/recovery, and limits.
+CI verifies Java tests separately; a successful image build alone is not a test
+result or production deployment. No new domain service or transaction is added.

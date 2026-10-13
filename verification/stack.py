@@ -46,7 +46,7 @@ def wait_for(predicate, label, seconds=60):
 
 
 class Stack:
-    def __init__(self, pool=20):
+    def __init__(self, pool=20, app_restart='no'):
         self.project = 'tb11-' + uuid.uuid4().hex[:12]
         self.work = tempfile.TemporaryDirectory(prefix=self.project + '-')
         self.directory = Path(self.work.name)
@@ -56,7 +56,8 @@ class Stack:
             self.port = sock.getsockname()[1]
         self.base = f'http://127.0.0.1:{self.port}'
         self.env = {k: v for k, v in os.environ.items() if not k.startswith(
-            ('SPRING_', 'DB_', 'JWT_', 'REDIS_', 'KAFKA_', 'MESSAGING_', 'OUTBOX_', 'BOOKING_', 'PAYMENTS_', 'LB_', 'COMPOSE_'))}
+            ('SPRING_', 'DB_', 'JWT_', 'REDIS_', 'KAFKA_', 'MESSAGING_', 'OUTBOX_', 'BOOKING_', 'PAYMENTS_',
+             'LB_', 'COMPOSE_', 'CATALOGUE_', 'CACHE_', 'RESERVATION_'))}
         self.env['BUILDX_CONFIG'] = str(self.directory / 'buildx')
         config = dict(DB_NAME='tbooker_phase11', DB_USERNAME='phase11', DB_PASSWORD=secrets.token_hex(24),
                       JWT_SECRET=base64.b64encode(self.key).decode(), LB_PORT=str(self.port),
@@ -69,7 +70,7 @@ class Stack:
         self.upstreams.write_text((ROOT / 'deploy/nginx/upstreams.conf').read_text())
         override = {'services': {'nginx': {'volumes': [f'{self.upstreams}:/etc/nginx/tbooker-upstreams.conf:ro']}}}
         for name in ('app-a', 'app-b'):
-            override['services'][name] = {'restart': 'no', 'environment': {'PAYMENTS_MOCK_CARD_OUTCOME': 'PENDING'}}
+            override['services'][name] = {'restart': app_restart, 'environment': {'PAYMENTS_MOCK_CARD_OUTCOME': 'PENDING'}}
         self.override = self.directory / 'override.json'
         self.override.write_text(json.dumps(override))
         self.prefix = ['docker', 'compose', '--project-directory', str(ROOT), '--env-file', str(self.env_file),

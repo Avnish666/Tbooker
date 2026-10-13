@@ -126,6 +126,16 @@ contracts where stated. See `API.md` for the current contract.
   verification alone does not establish a passing Actions run.
 - Deployment and benchmark automation are outside this phase.
 
+## Phase 12B — Reproducible deployment (implemented)
+
+- Build from source in a pinned Java 21 multi-stage Dockerfile; tests run separately.
+- Run two JVMs, NGINX, PostgreSQL, Redis, and Kafka with private service networking.
+- Document required secrets, internal addresses, tuning, health, and daily commands.
+- Retain PostgreSQL/Kafka volumes, disposable cache behavior, and Flyway startup locks.
+- Verify clean initialization, JWT/paid booking, app/database/stack restarts, and
+  optional-service outages in disposable projects. See DEPLOYMENT.md and TESTING.md.
+- Preserve the host development workflow; no business feature or cloud deployment.
+
 ## Future — Catalogue administration and scheduling
 
 - Add validated write use cases for catalogues and venue layouts when requested.
@@ -174,5 +184,5 @@ contracts where stated. See `API.md` for the current contract.
 - Publish reproducible performance evidence for the resume project, with
   limitations documented.
 
-Advance one phase at a time. Phase 12A adds CI only; real
+Advance one phase at a time. Phase 12B adds reproducible local deployment only; real
 providers, real email, refunds, and confirmed-booking cancellation remain future work.

@@ -1,6 +1,6 @@
 # Standalone configuration: do not combine with compose.yaml (which publishes dev ports).
 x-app: &app
-  image: tbooker:phase11
+  image: tbooker:local
   build: .
   restart: unless-stopped
   init: true
@@ -19,10 +19,36 @@ x-app: &app
     SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: 2
     REDIS_HOST: redis
     REDIS_PORT: 6379
+    PAYMENTS_MOCK_AMOUNT_MINOR: ${PAYMENTS_MOCK_AMOUNT_MINOR:-10000}
+    PAYMENTS_MOCK_UPI_OUTCOME: ${PAYMENTS_MOCK_UPI_OUTCOME:-SUCCESS}
+    PAYMENTS_MOCK_CARD_OUTCOME: ${PAYMENTS_MOCK_CARD_OUTCOME:-SUCCESS}
+    REDIS_CONNECT_TIMEOUT: ${REDIS_CONNECT_TIMEOUT:-200ms}
+    REDIS_COMMAND_TIMEOUT: ${REDIS_COMMAND_TIMEOUT:-200ms}
+    CATALOGUE_CACHE_ENABLED: ${CATALOGUE_CACHE_ENABLED:-true}
+    CACHE_METADATA_TTL: ${CACHE_METADATA_TTL:-PT10M}
+    CACHE_METADATA_LIST_TTL: ${CACHE_METADATA_LIST_TTL:-PT5M}
+    CACHE_SHOW_TTL: ${CACHE_SHOW_TTL:-PT1M}
+    CACHE_SHOW_LIST_TTL: ${CACHE_SHOW_LIST_TTL:-PT30S}
+    MESSAGING_ENABLED: ${MESSAGING_ENABLED:-true}
+    MESSAGING_SCHEDULING_ENABLED: ${MESSAGING_SCHEDULING_ENABLED:-true}
+    BOOKING_EVENTS_TOPIC: ${BOOKING_EVENTS_TOPIC:-tbooker.booking-confirmed.v1}
+    BOOKING_EVENTS_DLT: ${BOOKING_EVENTS_DLT:-tbooker.booking-confirmed.v1.DLT}
+    BOOKING_NOTIFICATION_GROUP: ${BOOKING_NOTIFICATION_GROUP:-tbooker-notifications-v1}
+    BOOKING_ANALYTICS_GROUP: ${BOOKING_ANALYTICS_GROUP:-tbooker-analytics-v1}
+    BOOKING_TOPIC_PARTITIONS: ${BOOKING_TOPIC_PARTITIONS:-3}
+    BOOKING_TOPIC_REPLICAS: ${BOOKING_TOPIC_REPLICAS:-1}
+    OUTBOX_BATCH_SIZE: ${OUTBOX_BATCH_SIZE:-20}
+    OUTBOX_RETRY_INITIAL: ${OUTBOX_RETRY_INITIAL:-PT1S}
+    OUTBOX_RETRY_MAX: ${OUTBOX_RETRY_MAX:-PT1M}
+    BOOKING_CONSUMER_RETRIES: ${BOOKING_CONSUMER_RETRIES:-3}
+    KAFKA_DELIVERY_TIMEOUT_MS: ${KAFKA_DELIVERY_TIMEOUT_MS:-5000}
+    KAFKA_REQUEST_TIMEOUT_MS: ${KAFKA_REQUEST_TIMEOUT_MS:-2000}
+    KAFKA_MAX_BLOCK_MS: ${KAFKA_MAX_BLOCK_MS:-1000}
     KAFKA_BOOTSTRAP_SERVERS: kafka:19092
     JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET}
     JWT_ISSUER: ${JWT_ISSUER:-tbooker}
     JWT_AUDIENCE: ${JWT_AUDIENCE:-tbooker-api}
+    JWT_TTL: ${JWT_TTL:-PT15M}
     SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-}
     SERVER_FORWARD_HEADERS_STRATEGY: framework
     SERVER_SHUTDOWN: graceful
@@ -54,9 +80,10 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-tbooker}?ApplicationName=app-b
       SPRING_DATASOURCE_HIKARI_POOL_NAME: app-b
   nginx:
-    image: nginx:1.28-alpine
+    image: nginx:1.28-alpine@sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236
     restart: unless-stopped
-    ports: ['127.0.0.1:${LB_PORT:-8080}:8080']
+    ports: ['${LB_BIND_ADDRESS:-127.0.0.1}:${LB_PORT:-8080}:8080']
+    networks: [default, edge]
     volumes:
       - ./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./deploy/nginx/upstreams.conf:/etc/nginx/tbooker-upstreams.conf:ro
@@ -71,7 +98,7 @@ services:
       timeout: 3s
       retries: 6
   postgres:
-    image: postgres:17.11-bookworm
+    image: postgres:17.11-bookworm@sha256:3645570cccdfa447589da9f57dd740faa29b30938e861289a5574b6ca6b03826
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_NAME:-tbooker}
@@ -87,7 +114,7 @@ services:
       timeout: 3s
       retries: 20
   redis:
-    image: redis:7.4-alpine
+    image: redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
     restart: unless-stopped
     command: [redis-server, --save, '', --appendonly, 'no', --maxmemory, 96mb, --maxmemory-policy, allkeys-lru]
     cpus: 0.5
@@ -98,7 +125,7 @@ services:
       timeout: 3s
       retries: 12
   kafka:
-    image: apache/kafka:3.9.1
+    image: apache/kafka:3.9.1@sha256:4ceccc577f03f51f6af8dbfda55194d0d892f4fa7913ffbded567ce3895622ed
     restart: unless-stopped
     environment:
       KAFKA_NODE_ID: 1
@@ -129,3 +156,9 @@ services:
 volumes:
   scaled_postgres:
   scaled_kafka:
+
+networks:
+  # Only NGINX joins the host-facing bridge. Mock providers need no Internet.
+  default:
+    internal: true
+  edge:

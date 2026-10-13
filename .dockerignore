@@ -1,4 +1,10 @@
 **
-!target/
-!target/Tbooker-0.0.1-SNAPSHOT.jar
+!pom.xml
+!mvnw
+!.mvn/
+!.mvn/wrapper/
+!.mvn/wrapper/maven-wrapper.properties
+!src/
+!src/main/
+!src/main/**
 !Dockerfile

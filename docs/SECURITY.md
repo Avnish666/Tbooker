@@ -266,3 +266,17 @@ ambiguous commit: retry a payment using its original key or inspect the existing
 reservation; a new hold request is not generally retry-safe. TLS, rate limiting,
 network policies, Redis authentication, broker ACL/SASL, token revocation, and key
 rotation remain future operational work. See [SCALING.md](SCALING.md).
+
+## Phase 12B deployment inputs
+
+Both Compose configurations require a private database password; scaled Compose
+also requires the shared JWT key. The example provides neither value. The build
+context allowlist excludes `.env` and credentials; the final image contains no
+build proxy settings or CA customization. Docker administrators can still read
+container environment values, so this is not a production secret-management system.
+
+The scaled service network is now explicitly internal; only NGINX joins a second
+host-facing bridge and publishes loopback HTTP. PostgreSQL/Redis/Kafka and backend
+ports remain unpublished. This does not replace TLS, Redis/broker authentication,
+or production firewall policy. Deliberately changing `LB_BIND_ADDRESS` can expose
+plaintext traffic outside the host. See [DEPLOYMENT.md](DEPLOYMENT.md).

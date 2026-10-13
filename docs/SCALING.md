@@ -31,19 +31,19 @@ infrastructure and metric attribution, not another allocation algorithm.
 
 ## Running locally
 
-Build the verified executable JAR first; the Dockerfile copies that artifact into
-a Java 21 runtime image and runs as UID 10001. The application filesystem is read
-only except for `/tmp`; container capabilities are dropped. Tests are not silently
-skipped during an image build: compilation and integration verification are a
-separate explicit step.
+Phase 12B now builds the executable JAR from source inside a pinned Java 21 builder
+and runs it as UID 10001 in a separate runtime stage. The filesystem is read only
+except for `/tmp`; container capabilities are dropped. No host JAR is required.
+Image packaging skips tests explicitly: run `./mvnw clean verify` separately or
+verify CI for the same commit. See [DEPLOYMENT.md](DEPLOYMENT.md) for the complete
+fresh-clone setup, environment contract, persistence checks, and troubleshooting.
 
 ```bash
-bash mvnw clean verify
 cp .env.example .env
-# Set your own DB_PASSWORD and a random Base64 JWT_SECRET in .env.
-# Generate the key locally with: openssl rand -base64 32
+# Set DB_PASSWORD and a random Base64 JWT_SECRET in this private file.
 # Optional: SPRING_PROFILES_ACTIVE=dev for a dedicated sample database.
-docker compose -f compose.scaled.yaml up -d --build --wait
+docker compose -f compose.scaled.yaml config --quiet
+docker compose -f compose.scaled.yaml up -d --build --wait --wait-timeout 240
 curl --fail http://localhost:8080/actuator/health/readiness
 docker compose -f compose.scaled.yaml ps
 ```
@@ -56,7 +56,7 @@ or set `LB_PORT` before starting the scaled stack on the same port.
 `docker compose -f compose.scaled.yaml down` retains PostgreSQL/Kafka volumes.
 Only remove volumes intentionally on a disposable database. Both JVMs use the
 same schema and Flyway history; Flyway coordinates concurrent startup migrations.
-The initial V7 upgrade still requires quiescing older booking writers as described
+Phase 12B isolates the service network and pins image digests. The initial V7 upgrade still requires quiescing older booking writers as described
 in [MESSAGING.md](MESSAGING.md). Phase 11 does not add a schema migration.
 
 | Setting | Scaled default |

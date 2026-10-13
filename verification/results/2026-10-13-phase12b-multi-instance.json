@@ -1,0 +1,197 @@
+{
+  "phase": 11,
+  "utc": "2026-10-13T18:13:53.907814+00:00",
+  "passed": 13,
+  "failed": 0,
+  "skipped": 0,
+  "selected_cases": null,
+  "tests": [
+    {
+      "case": "routing_auth_metrics",
+      "status": "passed",
+      "details": {
+        "upstreams": {
+          "172.20.0.5:8080": 10,
+          "172.20.0.6:8080": 10
+        },
+        "internal_host_ports": 0
+      },
+      "seconds": 3.194
+    },
+    {
+      "case": "hundred_contenders",
+      "status": "passed",
+      "details": {
+        "requests": 100,
+        "statuses": {
+          "409": 99,
+          "201": 1
+        },
+        "database_waiters": {
+          "app-a": 50,
+          "app-b": 50
+        },
+        "upstreams": {
+          "172.20.0.6:8080": 50,
+          "172.20.0.5:8080": 50
+        },
+        "repeat_confirmations": 20,
+        "bookings": 1
+      },
+      "seconds": 7.773
+    },
+    {
+      "case": "expiration_cleanup_and_reclaim",
+      "status": "passed",
+      "details": {
+        "expired_history_rows": 2,
+        "inventory": "AVAILABLE"
+      },
+      "seconds": 1.377
+    },
+    {
+      "case": "cancel_then_other_owner",
+      "status": "passed",
+      "details": {
+        "old_cancel_retry": 204,
+        "foreign_confirmation": 404,
+        "new_owner_booked": true
+      },
+      "seconds": 0.55
+    },
+    {
+      "case": "confirmation_waits_past_expiry",
+      "status": "passed",
+      "details": {
+        "confirmation": 409,
+        "bookings": 0
+      },
+      "seconds": 3.262
+    },
+    {
+      "case": "confirmation_commits_after_deadline",
+      "status": "passed",
+      "details": {
+        "confirmed_before_deadline": true,
+        "committed_after_deadline": true,
+        "cleanup_did_not_release": true
+      },
+      "seconds": 6.611
+    },
+    {
+      "case": "concurrent_payment_results",
+      "status": "passed",
+      "details": {
+        "concurrent_verified_result_retries": 20,
+        "payments": 1,
+        "bookings": 1
+      },
+      "seconds": 1.363
+    },
+    {
+      "case": "redis_outage",
+      "status": "passed",
+      "details": {
+        "fallback_requests": 12,
+        "booking_confirmed": true
+      },
+      "seconds": 5.078
+    },
+    {
+      "case": "kafka_outage",
+      "status": "passed",
+      "details": {
+        "booking_committed_during_outage": true,
+        "backlog_recovered": true
+      },
+      "seconds": 8.527
+    },
+    {
+      "case": "backend_crash_restart_active_hold",
+      "status": "passed",
+      "details": {
+        "while_stopped": {
+          "504": 1,
+          "200": 19
+        },
+        "payment_writes": {
+          "201": 1,
+          "200": 4,
+          "504": 1
+        },
+        "while_restarting": {
+          "200": 135,
+          "502": 3
+        },
+        "nginx_failure_evidence": [
+          "nginx-1  | 2026/10/13 18:11:27 [error] 32#32: *315 upstream timed out (110: Operation timed out) while connecting to upstream, client: 172.21.0.1, server: , request: \"GET /api/shows HTTP/1.1\", upstream: \"http://172.20.0.6:8080/api/shows\", host: \"127.0.0.1:37621\"",
+          "nginx-1  | 2026/10/13 18:11:34 [error] 31#31: *340 upstream timed out (110: Operation timed out) while connecting to upstream, client: 172.21.0.1, server: , request: \"POST /api/reservations/12/payments HTTP/1.1\", upstream: \"http://172.20.0.6:8080/api/reservations/12/payments\", host: \"127.0.0.1:37621\""
+        ],
+        "automatic_replays": 0,
+        "active_hold_preserved": true
+      },
+      "seconds": 35.919
+    },
+    {
+      "case": "payment_interrupted_without_proxy_replay",
+      "status": "passed",
+      "details": {
+        "killed_during_payment": "app-b",
+        "failed_post_status": 502,
+        "upstream_attempt": "172.20.0.6:8080",
+        "payments_before_explicit_retry": 0,
+        "explicit_retry_status": 201,
+        "same_key_repeat_status": 200
+      },
+      "seconds": 29.293
+    },
+    {
+      "case": "publisher_crash_after_ack",
+      "status": "passed",
+      "details": {
+        "killed_after_ack": "app-b",
+        "recovering_jvm": "app-a",
+        "notifications": 1,
+        "markers": 2,
+        "actual_SIGKILL": true
+      },
+      "seconds": 61.065
+    },
+    {
+      "case": "consumer_group_members",
+      "status": "passed",
+      "details": {
+        "tbooker-notifications-v1": {
+          "members": 2,
+          "hosts": [
+            "172.20.0.5",
+            "172.20.0.6"
+          ],
+          "partitions": [
+            0,
+            1,
+            2
+          ],
+          "member_output": "GROUP                    CONSUMER-ID                                                              HOST            CLIENT-ID                           #PARTITIONS     ASSIGNMENT\ntbooker-notifications-v1 consumer-tbooker-notifications-v1-2-cd86852e-e951-4760-958a-68ee1e695e64 /172.20.0.5     consumer-tbooker-notifications-v1-2 2               (0,1)\ntbooker-notifications-v1 consumer-tbooker-notifications-v1-2-f7035280-1b98-4e0f-a05f-ba0a04cff2c4 /172.20.0.6     consumer-tbooker-notifications-v1-2 1               (2)",
+          "offset_output": "GROUP                    TOPIC                        PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG             CONSUMER-ID                                                              HOST            CLIENT-ID\ntbooker-notifications-v1 tbooker.booking-confirmed.v1 0          6               6               0               consumer-tbooker-notifications-v1-2-cd86852e-e951-4760-958a-68ee1e695e64 /172.20.0.5     consumer-tbooker-notifications-v1-2\ntbooker-notifications-v1 tbooker.booking-confirmed.v1 1          4               4               0               consumer-tbooker-notifications-v1-2-cd86852e-e951-4760-958a-68ee1e695e64 /172.20.0.5     consumer-tbooker-notifications-v1-2\ntbooker-notifications-v1 tbooker.booking-confirmed.v1 2          2               2               0               consumer-tbooker-notifications-v1-2-f7035280-1b98-4e0f-a05f-ba0a04cff2c4 /172.20.0.6     consumer-tbooker-notifications-v1-2"
+        },
+        "tbooker-analytics-v1": {
+          "members": 2,
+          "hosts": [
+            "172.20.0.5",
+            "172.20.0.6"
+          ],
+          "partitions": [
+            0,
+            1,
+            2
+          ],
+          "member_output": "GROUP                CONSUMER-ID                                                          HOST            CLIENT-ID                       #PARTITIONS     ASSIGNMENT\ntbooker-analytics-v1 consumer-tbooker-analytics-v1-1-c94ce170-7856-4558-86ff-36c444cbafdd /172.20.0.5     consumer-tbooker-analytics-v1-1 1               (2)\ntbooker-analytics-v1 consumer-tbooker-analytics-v1-1-8d45ea10-0772-4e75-994e-83f5df2a80c1 /172.20.0.6     consumer-tbooker-analytics-v1-1 2               (0,1)",
+          "offset_output": "GROUP                TOPIC                        PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG             CONSUMER-ID                                                          HOST            CLIENT-ID\ntbooker-analytics-v1 tbooker.booking-confirmed.v1 0          6               6               0               consumer-tbooker-analytics-v1-1-8d45ea10-0772-4e75-994e-83f5df2a80c1 /172.20.0.6     consumer-tbooker-analytics-v1-1\ntbooker-analytics-v1 tbooker.booking-confirmed.v1 1          4               4               0               consumer-tbooker-analytics-v1-1-8d45ea10-0772-4e75-994e-83f5df2a80c1 /172.20.0.6     consumer-tbooker-analytics-v1-1\ntbooker-analytics-v1 tbooker.booking-confirmed.v1 2          2               2               0               consumer-tbooker-analytics-v1-1-c94ce170-7856-4558-86ff-36c444cbafdd /172.20.0.5     consumer-tbooker-analytics-v1-1"
+        }
+      },
+      "seconds": 21.423
+    }
+  ],
+  "pool_per_instance": 60
+}

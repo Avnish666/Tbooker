@@ -6,7 +6,6 @@ Reports measured results, Docker CPU/memory samples, JVM/pool snapshots, and SQL
 import argparse
 from collections import defaultdict
 import datetime
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -96,8 +95,7 @@ def main():
     order=[int(x) for x in args.order.split(',')]
     if any(x not in (1,2) for x in order):p.error('Order supports only one or two replicas.')
     records=[]
-    report=dict(utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),jar_sha256=hashlib.sha256(
-        (ROOT/'target/Tbooker-0.0.1-SNAPSHOT.jar').read_bytes()).hexdigest(),order=order,duration=args.duration,
+    report=dict(utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),order=order,duration=args.duration,
         catalogue_warmup=args.warmup,host=platform.platform(),cpu_count=os.cpu_count(),runs=records,
         pool_per_instance=20,app_cpu_quota=1,app_memory_limit_mib=768,heap_max_mib=384,
         cleanup_interval_ms=1000,outbox_poll_ms=500,outbox_lease_seconds=8,
@@ -110,6 +108,8 @@ def main():
         args.output.parent.mkdir(parents=True,exist_ok=True)
         args.output.write_text(json.dumps(report,indent=2)+'\n')
     with Stack(pool=20) as s:
+        # Phase 12B builds from source: identify the deployed JAR, not a host artifact.
+        report['jar_sha256']=s.docker('app-a','sha256sum','/app/app.jar').split()[0]
         report['images']={name:json.loads(run('docker','inspect',cid))[0]['Image'] for name,cid in s.containers.items()}
         network=next(iter(json.loads(run('docker','inspect',s.containers['nginx']))[0]['NetworkSettings']['Networks']))
         for workload in args.workload or ['catalogue','mixed','contention']:
