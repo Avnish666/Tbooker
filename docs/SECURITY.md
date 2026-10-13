@@ -1,10 +1,11 @@
-# Authentication and authorization — Phases 6–8
+# Authentication and authorization — Phases 6–9
 
 The application authenticates local accounts with BCrypt and issues short-lived
 JWT bearer tokens. Spring Security protects booking routes and checks roles;
 booking queries also enforce ownership. Catalogue reads and health remain public.
-There is no Redis, Kafka, real payment integration, external identity provider, or
-OAuth authorization-server flow.
+Redis caches public catalogue metadata only; it stores no credentials, JWTs, or
+ownership data. There is no Kafka, real payment integration, external identity
+provider, or OAuth authorization-server flow.
 
 ## Account and API lifecycle
 
@@ -74,7 +75,7 @@ rendered without being replaced by authorization failures.
 | Route / method | Access |
 | --- | --- |
 | POST `/api/auth/register`, `/api/auth/login` | Public |
-| GET/HEAD catalogue routes under `/api/shows` | Public only for the list, detail, and seat routes |
+| GET/HEAD catalogue routes | Public show list/detail/seats and movie/theatre list/detail only |
 | Health endpoints | Public |
 | POST `/api/shows/{showId}/bookings` | USER or ADMIN; creation now returns `409` |
 | GET `/api/bookings`, `/api/bookings/{bookingId}` | USER or ADMIN, own bookings only |

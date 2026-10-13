@@ -7,7 +7,9 @@ rollback, and concurrent booking requests; Phase 5 documents the implemented
 design. Phase 6 adds BCrypt registration/login, JWT authentication, roles, and
 booking ownership. Phase 7 adds five-minute seat reservations, expiry, owner-only
 confirmation/cancellation, and repeatable confirmation. Phase 8 adds idempotent
-mock UPI/Card payments and requires verified payment for new bookings. Later
+mock UPI/Card payments and requires verified payment for new bookings. Phase 9
+adds optional Redis caching for public catalogue metadata, PostgreSQL fallback,
+and reproducible k6 measurements. Later
 features are planned in [the roadmap](docs/ROADMAP.md).
 
 ## Stack
@@ -16,15 +18,17 @@ features are planned in [the roadmap](docs/ROADMAP.md).
 - Spring Boot 3.5.16 (stable, Java 21 compatible, with JUnit 5)
 - Spring MVC, Validation, Data JPA, Actuator, and Flyway
 - Spring Security resource server, BCrypt, and Nimbus JOSE + JWT 10.10
-- PostgreSQL 17, Docker Compose, JUnit 5, Mockito, and Testcontainers
+- PostgreSQL 17, Redis 7.4, Spring Cache/Data Redis with Lettuce
+- Docker Compose, JUnit 5, Mockito, Testcontainers, and k6 load scripts
 
 The original application package, `com.example.Tbooker`, is retained. Authentication
 and PostgreSQL-backed temporary holds and mock payments are implemented. Real
-providers, Redis, and Kafka remain future work.
+providers and Kafka remain future work. Redis caches catalogue DTOs only.
 
 ## Current functionality and architecture
 
-- List all shows, inspect a show, and read its seat inventory through DTO APIs.
+- List movies, theatres, and shows; inspect their details using cached DTO APIs.
+- Read seat inventory directly from PostgreSQL, including effective hold expiry.
 - Register and log in, then confirm one show seat using the authenticated identity.
 - Hold an available seat for five minutes, inspect it, pay through a mock provider, or cancel the hold.
 - Initiate UPI/Card payment with an owner-scoped idempotency key; read your payment status/history.
@@ -43,7 +47,10 @@ flowchart LR
     Client[HTTP client] --> Security[Spring Security and JWT validation]
     subgraph App[Single Spring Boot application]
         Security --> Controllers[Controllers and DTOs]
-        Controllers --> Services[Catalogue, booking, and reservation services]
+        Controllers --> Catalogue[Catalogue services via Spring Cache]
+        Catalogue --> Reader[CatalogueReader - cache miss or seat reads]
+        Reader --> Repos
+        Controllers --> Services[Booking and reservation services]
         Controllers --> Payments[PaymentService and result processor]
         Payments --> Tx[PaymentTransactions]
         Tx --> Repos
@@ -58,6 +65,7 @@ flowchart LR
         Repos --> Persistence[Hibernate and HikariCP]
         Flyway[Flyway startup migrations]
     end
+    Catalogue --> Redis[(Optional Redis DTO cache)]
     Persistence --> DB[(PostgreSQL)]
     Ledger --> DB
     Flyway --> DB
@@ -66,7 +74,7 @@ flowchart LR
 The repository has one Maven module and one deployable application, organized
 by technical layers. Catalogue and booking responsibilities are separate
 services; domain module boundaries are not enforced by a module framework.
-Docker Compose currently runs PostgreSQL only.
+Docker Compose runs PostgreSQL and optional Redis; the Java application runs on the host.
 
 | Document | Contents |
 | --- | --- |
@@ -78,6 +86,7 @@ Docker Compose currently runs PostgreSQL only.
 | [Security](docs/SECURITY.md) | Authentication flow, filter chain, ownership, roles, setup, and limitations. |
 | [Booking](docs/BOOKING.md) | Detailed race-condition and transaction explanation. |
 | [Testing](docs/TESTING.md) | Executed test evidence, concurrency protocol, and limitations. |
+| [Performance](docs/PERFORMANCE.md) | Reproducible k6 baseline/cache comparison, measured results, and limits. |
 | [Roadmap](docs/ROADMAP.md) | Completed phases and future milestones. |
 
 ## Local setup
@@ -90,7 +99,7 @@ Windows; no global Maven installation is required.
 cp .env.example .env
 # Edit .env: choose DB_PASSWORD and set JWT_SECRET to a fresh random Base64 key.
 # Generate the JWT_SECRET value with: openssl rand -base64 32
-docker compose up -d --wait postgres
+docker compose up -d --wait postgres redis
 
 # Bash: Spring Boot does not automatically read .env.
 set -a
@@ -100,7 +109,9 @@ bash mvnw spring-boot:run
 ```
 
 Keep `.env` private. Its values configure the host Java process and the database
-container. Use shell-compatible assignments (quote values containing special
+containers. Redis is disposable, has no persistent volume, and uses a 128 MiB
+LRU memory limit. Both ports bind to loopback; the Compose Redis has no password
+and is for local development only. Use shell-compatible assignments (quote values containing special
 characters). PostgreSQL is exposed only on loopback. Its data lives in the
 `postgres_data` named volume and survives `docker compose down`.
 
@@ -124,10 +135,33 @@ volume; changing `.env` later does not change database users or passwords.
 | `JWT_ISSUER` | `tbooker` |
 | `JWT_AUDIENCE` | `tbooker-api` |
 | `JWT_TTL` | `PT15M`; supported range is one minute to one hour |
+| `REDIS_HOST` / `REDIS_PORT` | `localhost` / `6379` |
+| `REDIS_USERNAME` / `REDIS_PASSWORD` | Blank for local Compose; inject for a secured external Redis |
+| `REDIS_CONNECT_TIMEOUT` / `REDIS_COMMAND_TIMEOUT` | `200ms` each |
+| `CATALOGUE_CACHE_ENABLED` | `true`; `false` uses a no-op cache for comparison or operations |
+| `CACHE_METADATA_TTL` / `CACHE_METADATA_LIST_TTL` | `PT10M` / `PT5M` |
+| `CACHE_SHOW_TTL` / `CACHE_SHOW_LIST_TTL` | `PT1M` / `PT30S` |
 
 For a managed database, inject the `SPRING_DATASOURCE_*` variables and JWT key securely.
 Do not store real credentials in Git. Compose provisions a local development
 database; it is not a production database deployment configuration.
+
+## Catalogue caching
+
+Redis uses cache-aside: a hit returns a typed JSON DTO without opening a database
+transaction; a miss reads PostgreSQL in a short read transaction and caches the
+result with a finite TTL. Movie/theatre details live for ten minutes, their lists
+for five, show details for one, and show lists for thirty seconds. Relevant JPA
+changes evict affected entries after commit. Native SQL changes, failed
+invalidation, and in-flight stale reads can remain visible until TTL expiry.
+
+Redis errors fall back to PostgreSQL and increment cache-error counters. An outage
+can add timeout latency and database load; there is no circuit breaker or
+distributed miss coalescing. Readiness does not require Redis. Inventory, holds,
+payments, booking ownership, and all allocation decisions remain uncached.
+Use a dedicated Redis instance per environment; never share the namespace across
+unrelated deployments. See [HLD](docs/HLD.md#redis-catalogue-cache) for guarantees
+and [performance](docs/PERFORMANCE.md) for the reproducible comparison.
 
 ## Health and errors
 
@@ -165,6 +199,8 @@ the sample reproducible. IDs are generated, so read them from the API. The sampl
 users have no password and cannot log in; register a new account as shown below.
 
 ```bash
+curl --fail --silent http://localhost:8080/api/movies
+curl --fail --silent http://localhost:8080/api/theatres
 curl --fail --silent http://localhost:8080/api/shows
 # Set SHOW_ID to an id returned by that response (1 on a fresh sample database).
 SHOW_ID=1
@@ -324,10 +360,12 @@ bash mvnw clean verify
 
 The full suite requires a running Docker daemon. Tests generate a random JWT key;
 no production key or `.env` is required. Testcontainers creates isolated
-PostgreSQL containers on random ports, applies Flyway migrations, and cleans them
+PostgreSQL and (in cache tests) Redis containers on random ports, applies Flyway migrations, and cleans them
 up after testing. Tests use container connection details and do not depend on
 the Compose database or a developer's database credentials. The first run pulls
-the PostgreSQL and Testcontainers helper images.
+the PostgreSQL, Redis, and Testcontainers helper images. Existing regression
+classes disable the optional cache; dedicated cache tests enable real Redis and
+verify metadata, outages, transactions, and contending reservations together.
 
 The suite checks health, catalogue responses, Problem Details, application
 startup, migration validation, JPA relationships, database constraints, UTC
@@ -346,11 +384,11 @@ all 20 transactions to contend at PostgreSQL. Migration checks call Flyway again
 and verify that migration history and application data remain unchanged.
 
 See [TESTING.md](docs/TESTING.md) for execution details and remaining weaknesses.
-The Phase 8 full run passed **194 tests: 0 failures, 0 errors, 0 skipped**.
-It includes the 159 earlier regression cases through the paid workflow and
-35 payment verification/recovery tests.
-See the latest full-run counts in [TESTING.md](docs/TESTING.md#phase-8-verification).
-These are correctness checks, not performance measurements.
+The Phase 9 full run passed **218 tests: 0 failures, 0 errors, 0 skipped**.
+It includes all 194 earlier regression cases and 24 Redis/PostgreSQL cache cases.
+See the full-run counts in [TESTING.md](docs/TESTING.md#phase-9-verification).
+The separate [k6 comparison](docs/PERFORMANCE.md) records performance evidence;
+correctness tests do not establish production throughput.
 
 Run only the PostgreSQL booking tests with:
 
@@ -383,6 +421,7 @@ Under `src/main/java/com/example/Tbooker`:
 | `controller` | HTTP mapping and DTO validation; thin controllers |
 | `service` | Use cases and transaction boundaries |
 | `repository` | Persistence access |
+| `cache` | Cache names, JPA change events, after-commit invalidation, and failure handling |
 | `payment` | PaymentStrategy, injected provider registry, mock adapters and durable ledger |
 | `entity` | JPA domain entities, kept out of API bodies |
 | `dto` | API request and response types |
@@ -401,9 +440,9 @@ Later phases will define catalogue administration, filters and pagination,
 overlap-aware scheduling, confirmed-booking cancellation, and general request idempotency.
 Later identity work includes password reset, email verification, and token revocation.
 Real provider integration, automated reconciliation, refunds and payment
-operations need a later phase. Redis
-caching and Kafka workflows are proposals for demonstrated needs, not installed
-components. Delivery work still includes an application Dockerfile, CI, and
+operations need a later phase. Redis metadata caching is implemented; Kafka
+workflows remain proposals for demonstrated needs. Delivery work still includes
+an application Dockerfile, CI, and
 deployment/backup procedures. See the [roadmap](docs/ROADMAP.md).
 
 The legacy immediate-booking endpoint now returns `409`. A hold-creation retry
@@ -437,7 +476,7 @@ run, while claim paths and expiry-aware reads work even with the scheduler off.
 Optional Spring properties are `reservations.cleanup.enabled` (default `true`)
 and `reservations.cleanup.delay-ms` (default `30000`).
 
-No real payments, Redis, Kafka, hold renewal, general idempotency keys, reservation
+No real payments, Kafka, hold renewal, general idempotency keys, reservation
 listing, hold quotas, or confirmed-booking cancellation are included. A lost
 hold-creation response has no dedicated recovery mechanism. See the state and
 transaction diagrams in [HLD](docs/HLD.md) and [LLD](docs/LLD.md).

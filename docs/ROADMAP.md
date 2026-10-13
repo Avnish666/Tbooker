@@ -85,6 +85,16 @@ contracts where stated. See `API.md` for the current contract.
   and the existing reservation/security regressions against PostgreSQL.
 - Document current guarantees and the absence of real provider/refund automation.
 
+## Phase 9 — Redis catalogue caching and performance (implemented)
+
+- Cache movie/theatre/show DTO lists and details with typed JSON and finite TTLs.
+- Invalidate affected JPA catalogue changes after commit; document TTL consistency.
+- Fall back to PostgreSQL on cache failure; keep availability and allocation uncached.
+- Configure optional Redis locally, cache error counters, and per-cache TTL settings.
+- Verify real Redis/PostgreSQL hits, expiry, invalidation, rollback, outages, and contention.
+- Provide reproducible k6 baseline/cache comparison with measured query/hit counts.
+- Retain all prior authentication, payment, migration, and concurrency regressions.
+
 ## Future — Catalogue administration and scheduling
 
 - Add validated write use cases for catalogues and venue layouts when requested.
@@ -115,9 +125,11 @@ contracts where stated. See `API.md` for the current contract.
 
 - Define traffic assumptions and capacity targets; measure the bottlenecks
   identified in the current HLD before publishing capacity estimates.
-- Add metrics, structured logs, tracing, load tests, and query/index tuning.
-- Consider Redis for measured cache needs, and messaging such as Kafka for
-  specific asynchronous workflows; neither is a prerequisite for the monolith.
+- Expand metrics, structured logs, tracing, load scenarios, and query/index tuning
+  beyond the Phase 9 cache counters and local catalogue benchmark.
+- Use measured cache behavior to decide whether to add stampede control, a
+  circuit breaker, durable invalidation, and TTL jitter. Consider Kafka only for
+  specific asynchronous workflows; it is not a prerequisite for the monolith.
 - If asynchronous processing is introduced, define outbox delivery, consumer
   idempotency, retry behavior, and failure recovery first.
 
@@ -131,5 +143,5 @@ contracts where stated. See `API.md` for the current contract.
 - Publish reproducible performance evidence for the resume project, with
   limitations documented.
 
-Advance one phase at a time. Phase 8 adds mock payments only; real providers,
-Redis, Kafka, refunds, and confirmed-booking cancellation remain future work.
+Advance one phase at a time. Phase 9 adds Redis metadata caching only; real
+providers, Kafka, refunds, and confirmed-booking cancellation remain future work.

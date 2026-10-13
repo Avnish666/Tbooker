@@ -128,8 +128,15 @@ classDiagram
     AuthService --> TokenService
     TokenService --> JwtEncoder
     BookingController --> BookingService
-    ShowCatalogueService --> MovieShowRepository
-    ShowCatalogueService --> ShowSeatRepository
+    ShowCatalogueService --> CatalogueReader
+    CatalogueMetadataController --> CatalogueMetadataService
+    CatalogueMetadataService --> CatalogueReader
+    CatalogueReader --> MovieShowRepository
+    CatalogueReader --> ShowSeatRepository
+    CatalogueReader --> MovieRepository
+    CatalogueReader --> TheatreRepository
+    JpaRepository <|-- MovieRepository
+    JpaRepository <|-- TheatreRepository
     BookingService --> MovieShowRepository
     BookingService --> ShowSeatRepository
     BookingService --> UserRepository
@@ -140,7 +147,7 @@ classDiagram
     JpaRepository <|-- BookingRepository
 ```
 
-All six repositories extend `JpaRepository<Entity, Long>`. Inherited operations
+All eight repositories (including the payment repository below) extend `JpaRepository<Entity, Long>`. Inherited operations
 used by booking include `existsById`, `findById`, `getReferenceById`, and
 `saveAndFlush`. `PaymentStrategy` is the gateway interface; there are no generic service interfaces or repositories for
 entities without a current persistence use case of their own.
@@ -251,7 +258,9 @@ in the JPA mapping. Confirmed bookings still have no cancellation workflow.
 
 | Service operation | Responsibility |
 | --- | --- |
-| `ShowCatalogueService.getShows()` | Read all shows ordered by start time and ID; map to `ShowResponse`. |
+| `ShowCatalogueService.getShows()` / `getShow()` | Cache show DTO list/detail; delegate misses to `CatalogueReader`. |
+| `CatalogueMetadataService` | Cache movie/theatre DTO list/detail via the same reader. |
+| `CatalogueReader` | Query and map all catalogue DTOs; seat reads always query PostgreSQL. |
 | `getShow(showId)` | Read one show or raise `ShowNotFoundException`. |
 | `getShowSeats(showId)` | Verify the show exists; return inventory ordered by physical seat number and show-seat ID. |
 | `BookingService.book(showId, userId, request)` | Validate the legacy request, then reject creation with `PaymentConflictException` (`409`). |
@@ -271,7 +280,9 @@ in the JPA mapping. Confirmed bookings still have no cancellation workflow.
 | `SeatInventoryService.expireBatch` | Own a bounded `READ_COMMITTED` cleanup transaction, skipping locked seats. |
 | `TokenService.issue(user)` | Issue HS256 claims using `JwtEncoder`, `JwtProperties`, and an injected UTC clock. |
 
-`ShowCatalogueService` has class-level `@Transactional(readOnly = true)`.
+`CatalogueReader` has class-level `@Transactional(readOnly = true)`.
+The cache facades have no transaction annotation; cache hits need no database
+connection. Spring Cache invokes the separate reader proxy on a miss.
 `MovieShowRepository` uses an entity graph for `movie`, `screen`, and
 `screen.theatre`; the seat-list native query projects seat labels and expiry-aware
 availability without exposing entities. These fetch plans support
@@ -414,7 +425,7 @@ now defines `SecurityConfig`, validated `JwtProperties`, and `SecurityProblemHan
 | Single responsibility | Controllers handle HTTP, services coordinate use cases, repositories access persistence, and advice maps errors. |
 | Open/closed | The orchestrator selects `PaymentStrategy` without branching on UPI/Card. A new provider still requires an enum/schema change and a bean; this is deliberate bounded extensibility. |
 | Liskov substitution | Both strategies honor stable command identity and independent verification contracts; selecting another mock does not change orchestration. |
-| Interface segregation | The gateway exposes only selection, charge, and verification; six entity-specific repositories still inherit the broad `JpaRepository` API. |
+| Interface segregation | The gateway exposes only selection, charge, and verification; eight entity-specific repositories still inherit the broad `JpaRepository` API. |
 | Dependency inversion | Payment orchestration consumes the injected Strategy interface through its registry; services receive repository interfaces instead of constructing persistence implementations. Controllers depend on concrete services, and services use Spring annotations: this is a layered Spring design, not framework-independent ports and adapters. |
 
 ## Patterns actually used
@@ -435,8 +446,8 @@ now defines `SecurityConfig`, validated `JwtProperties`, and `SecurityProblemHan
 
 A custom **Strategy** interface and a Spring-managed **Registry** select gateway
 behavior. The registry fills the selection role often served by a factory but
-does not construct objects; Spring constructs and injects them. No Observer or
-custom Singleton implementation is introduced.
+does not construct objects; Spring constructs and injects them. Catalogue lifecycle events use Spring's in-process publisher/listener (Observer)
+mechanism; they are not durable events. No custom Singleton is introduced.
 Spring bean scope is framework behavior, not an application-designed Singleton
 pattern. Future requirements should justify additional abstractions before they
 are added. See [DECISIONS.md](DECISIONS.md).
@@ -556,4 +567,73 @@ with `new` inside a use case.
 SRP separates HTTP, orchestration, transactional persistence, gateway behavior,
 and booking policy. DIP/OCP apply at the gateway interface, not as a claim that
 the entire application is framework-independent. Recovery is an explicit
-multi-transaction workflow; no general Saga engine, outbox, or event bus is present.
+multi-transaction workflow; no general Saga engine, outbox, or distributed event bus is present.
+
+
+## Cache-aside collaborators and execution order
+
+```mermaid
+classDiagram
+    ShowController --> ShowCatalogueService
+    CatalogueMetadataController --> CatalogueMetadataService
+    ShowCatalogueService --> CatalogueReader
+    CatalogueMetadataService --> CatalogueReader
+    CatalogueCacheConfig --> RedisCacheManager
+    CatalogueCacheConfig --> CatalogueCacheProperties
+    CatalogueCacheConfig --> CatalogueCacheErrors
+    CatalogueChangeListener --> ApplicationEventPublisher
+    CatalogueCacheInvalidator --> CatalogueCacheDependencies
+    CatalogueCacheInvalidator --> CacheManager
+    CatalogueCacheInvalidator --> CatalogueCacheErrors
+    CatalogueCacheDependencies --> EntityManager
+    CatalogueCacheErrors ..|> CacheErrorHandler
+    RedisCacheManager ..|> CacheManager
+```
+
+`@Cacheable` is applied by Spring's proxy to facade calls with explicit cache
+names and stable `all`/ID keys. `CatalogueCacheConfig` registers exactly six
+caches, per-cache typed Jackson serializers, TTLs, statistics, no null caching,
+and transaction-aware writes. `CATALOGUE_CACHE_ENABLED=false` selects a
+`NoOpCacheManager`. `CatalogueCacheErrors` implements the framework strategy for
+get/put/evict/clear failures; it preserves the reader fallback path and emits
+metrics/logs. It does not swallow PostgreSQL or application exceptions.
+
+```mermaid
+sequenceDiagram
+    participant C as Catalogue controller
+    participant P as Spring Cache service proxy
+    participant R as Redis
+    participant S as CatalogueReader transactional proxy
+    participant DB as PostgreSQL
+    C->>P: getShows / getShow / metadata read
+    P->>R: GET typed DTO key
+    alt Cache hit
+        R-->>P: JSON DTO
+    else Miss, timeout, or serialization failure
+        P->>S: Read requested catalogue
+        S->>DB: Begin read-only transaction; query
+        DB-->>S: Entities
+        S-->>P: Map DTO and end transaction
+        P->>R: SET JSON DTO with finite TTL (best effort)
+    end
+    P-->>C: DTO response
+```
+
+Seat reads skip the cache proxy operation entirely. If a caller already has a
+transaction, the cache condition skips both lookup and population; this prevents
+uncommitted data escaping via Redis and allows read-your-own-write behavior.
+Separate facade/reader beans also avoid Spring proxy self-invocation problems.
+
+`CatalogueChangeListener.changed` is a Spring-injected Hibernate entity listener.
+Its lifecycle callback only publishes kind/ID; it performs no queries while
+Hibernate flushes. `CatalogueCacheInvalidator.invalidate` runs after commit,
+uses `evictIfPresent` for immediate targeted deletion, and obtains related show
+IDs from `CatalogueCacheDependencies.affectedShows` in `REQUIRES_NEW`. Failure
+cannot undo the already-committed write. Dependency lookup failures are logged;
+Redis operation failures use the shared error handler. Rollback discards events.
+
+SRP separates mapping, caching, invalidation, and error policy. DI supplies each
+collaborator; the framework CacheManager/CacheErrorHandler interfaces provide
+DIP at the infrastructure boundary. Cache-aside, DTO, Repository, Service Layer,
+Spring proxy interception, and Observer are the added/reused patterns. No custom
+cache abstraction, distributed lock, or singleton framework is invented.

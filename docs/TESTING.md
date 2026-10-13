@@ -1,8 +1,9 @@
 # Integration and security verification
 
-The current suite verifies Phases 1–8, including payment-gated bookings. Historical
-Phase 4–7 results are retained below; the final section records the Phase 8 clean
-verification run. All database/concurrency tests use PostgreSQL Testcontainers.
+The current suite verifies Phases 1–9, including payment-gated bookings and optional
+Redis catalogue caching. Historical phase results are retained below; the final
+section records Phase 9 verification. Database/concurrency tests use PostgreSQL
+Testcontainers; cache tests additionally use an isolated Redis container.
 
 ## Implementation review
 
@@ -342,3 +343,64 @@ or benchmark production performance. They demonstrate recovery from equivalent
 persisted intermediate states, not deployed failover or payment certification.
 Automatic reconciliation/refunds, lock timeouts, and operational controls remain
 limitations documented in HLD and DECISIONS.
+
+
+## Phase 9 verification
+
+On **2026-10-13**, the full wrapper `clean verify` passed with **218 tests,
+0 failures, 0 errors, 0 skipped**, using the same cloud Maven command above.
+The JAR was built successfully with Java 21 and Docker-backed PostgreSQL 17.11
+and Redis 7.4. Surefire XML is in `target/surefire-reports`; the local log is
+`/tmp/tbooker-phase9-clean-verify.log`. All existing 194 regression cases ran.
+
+| Test class | Passed | Failed | Errors | Skipped |
+| --- | ---: | ---: | ---: | ---: |
+| `BookingConcurrencyIntegrationTests` | 3 | 0 | 0 | 0 |
+| `BookingIntegrationTests` | 35 | 0 | 0 | 0 |
+| `CatalogueCacheIntegrationTests` | 24 | 0 | 0 | 0 |
+| `PaymentIntegrationTests` | 35 | 0 | 0 | 0 |
+| `ReservationCleanupIntegrationTests` | 1 | 0 | 0 | 0 |
+| `ReservationIntegrationTests` | 33 | 0 | 0 | 0 |
+| `SecurityIntegrationTests` | 42 | 0 | 0 | 0 |
+| `ShowCatalogueIntegrationTests` | 31 | 0 | 0 | 0 |
+| `TbookerApplicationTests` | 4 | 0 | 0 | 0 |
+| `JwtConfigurationTests` | 8 | 0 | 0 | 0 |
+| `HealthControllerTests` | 2 | 0 | 0 | 0 |
+| **Total** | **218** | **0** | **0** | **0** |
+
+`CatalogueCacheIntegrationTests` adds 24 cases with real Redis and PostgreSQL:
+
+- All six caches: miss executes one Hibernate SQL statement, hit executes none
+  and opens no database transaction; API and stored JSON match with UTC timestamps.
+- Real Redis TTL expiry refreshes an out-of-band SQL change.
+- JPA movie/theatre/screen/show edits invalidate after commit, preserving unrelated
+  details; show creation/removal invalidate lists and the removed detail.
+- Rollback leaves cache intact; reads within a transaction bypass cached data and
+  never publish its uncommitted values.
+- Malformed cached JSON falls back to SQL and is replaced by a valid DTO.
+- Pausing the Redis container causes real command timeouts: catalogue reads still
+  work, readiness stays UP, and failed eviction cannot roll back a database commit.
+- Twenty coordinated cold/warm catalogue requests return identical DTOs; warm
+  reads execute no SQL. Cold reads may execute multiple queries (no single-flight).
+- With warm cache and with Redis paused, real signed JWT ownership, paid
+  confirmation, permanent booking uniqueness, and live inventory still work.
+- Expiry/cancellation are immediately visible through the uncached seat route.
+- Twenty MockMvc requests contend in independent PostgreSQL transactions while
+  the cache is enabled. A coordinator holds the row until `pg_stat_activity`
+  observes all 20 lock waiters; exactly one hold succeeds and 19 conflict.
+- New public movie/theatre APIs validate IDs, do not cache missing resources, and
+  retain USER/ADMIN mutation authorization without adding write handlers.
+
+The first targeted run had two incorrect new assertions expecting `201` from the
+existing confirmation API; its contract is `200`. Those assertions were corrected
+before the successful full run. No domain behavior was changed to satisfy them.
+The cache suite uses MockMvc through the real filter chain; existing paid-booking
+concurrency tests still traverse a random-port HTTP server. Fixtures flush only
+the dedicated disposable Redis container. Legacy regression contexts explicitly
+disable optional caching; no database mocks or automatically skipped cases are used.
+
+The suite does not simulate every network failure or verify multiple deployed
+backend instances. In-process invalidation events are not durable, race-driven
+metadata staleness remains TTL-bounded, and Redis outages can amplify SQL load.
+Performance evidence is separately recorded in [PERFORMANCE.md](PERFORMANCE.md);
+passing correctness tests is not evidence of production capacity.

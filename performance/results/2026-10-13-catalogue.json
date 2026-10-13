@@ -1,0 +1,93 @@
+{
+  "started_at_utc": "2026-10-13T05:49:08.889585+00:00",
+  "base_commit": "c0622919e76cf46e7ed4bf49d50326377845aa0a",
+  "working_tree_changes_included": true,
+  "environment": {
+    "os": "Linux-6.18.44-x86_64-with-glibc2.41",
+    "logical_cpus_visible": 5,
+    "java": "openjdk version \"21.0.12.1\" 2026-08-18\nOpenJDK Runtime Environment (build 21.0.12.1+1-1-deb13u1-Debian)\nOpenJDK 64-Bit Server VM (build 21.0.12.1+1-1-deb13u1-Debian, mixed mode, sharing)",
+    "jvm_options": "-Xms256m -Xmx512m -XX:ActiveProcessorCount=4",
+    "images": {
+      "postgres:17.11-bookworm": [
+        "postgres@sha256:3645570cccdfa447589da9f57dd740faa29b30938e861289a5574b6ca6b03826"
+      ],
+      "redis:7.4-alpine": [
+        "redis@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499"
+      ],
+      "grafana/k6:1.6.0": [
+        "grafana/k6@sha256:be2a9ceb1b6ffc573277af4157135882a6d6433968b41e858ab02c5fd5847532"
+      ]
+    }
+  },
+  "workload": {
+    "method": "GET",
+    "path": "/api/shows",
+    "show_count": 100,
+    "vus": 10,
+    "duration": "30s",
+    "warmup": "10s",
+    "order": "disabled-enabled-enabled-disabled",
+    "show_list_ttl_seconds": 30,
+    "model": "closed, no think time",
+    "restarts_between_runs": true
+  },
+  "runs": [
+    {
+      "run": 1,
+      "cache_enabled": false,
+      "requests": 56665,
+      "requests_per_second": 1888.5681702413883,
+      "average_ms": 4.071919870043237,
+      "p95_ms": 8.588314199999996,
+      "http_error_rate": 0,
+      "check_success_rate": 1,
+      "redis_hits": 0,
+      "redis_misses": 0,
+      "redis_hit_ratio": null,
+      "catalogue_select_calls": 56665
+    },
+    {
+      "run": 2,
+      "cache_enabled": true,
+      "requests": 86354,
+      "requests_per_second": 2878.2400517941355,
+      "average_ms": 2.560469170275829,
+      "p95_ms": 5.1133205,
+      "http_error_rate": 0,
+      "check_success_rate": 1,
+      "redis_hits": 86344,
+      "redis_misses": 10,
+      "redis_hit_ratio": 0.9998841976052065,
+      "catalogue_select_calls": 10
+    },
+    {
+      "run": 3,
+      "cache_enabled": true,
+      "requests": 88363,
+      "requests_per_second": 2944.809742483632,
+      "average_ms": 2.5088568529701454,
+      "p95_ms": 5.082683999999999,
+      "http_error_rate": 0,
+      "check_success_rate": 1,
+      "redis_hits": 88353,
+      "redis_misses": 10,
+      "redis_hit_ratio": 0.9998868304607132,
+      "catalogue_select_calls": 10
+    },
+    {
+      "run": 4,
+      "cache_enabled": false,
+      "requests": 53125,
+      "requests_per_second": 1770.4973396793919,
+      "average_ms": 4.410818208715312,
+      "p95_ms": 9.370657399999994,
+      "http_error_rate": 0,
+      "check_success_rate": 1,
+      "redis_hits": 0,
+      "redis_misses": 0,
+      "redis_hit_ratio": null,
+      "catalogue_select_calls": 53125
+    }
+  ],
+  "jar_sha256": "4570512e3645923dd625032690bb3f1698659f46b9521052ae84c65957d726ea"
+}

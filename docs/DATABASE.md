@@ -394,3 +394,21 @@ Cleanup never deletes payments, receipts, bookings, or reservation history.
 Retention, archival, refunds, and separate migration/runtime database privileges
 remain future operations work. Tests verify fresh V1–V6 migration, V5-to-V6
 preservation, constraint violations, and repeat migration with paid bookings.
+
+
+## Phase 9 cache boundary
+
+No SQL migration or domain schema change is needed for Redis metadata caching.
+V1–V6 and the development repeatable migration remain unchanged. Movie/theatre
+list repositories order by primary key; the show entity graph still fetches its
+movie, screen, and theatre in one query. Seat availability keeps its PostgreSQL
+expiry-aware native projection. No query index was added without evidence.
+
+Redis is disposable derived data, not another relational authority. It stores
+six public DTO caches with versioned keys and finite TTLs (see [HLD](HLD.md#redis-catalogue-cache)).
+JPA Movie/Theatre/Screen/MovieShow lifecycle events invalidate affected entries
+after commit. Flyway, native SQL, and bulk JPQL bypass those callbacks; use the
+explicit change event within application writer transactions when needed, or
+accept expiry-based refresh. Never infer seat ownership or availability from a
+cached show. All inventory, reservation, payment, and booking constraints and
+transaction boundaries are unchanged.

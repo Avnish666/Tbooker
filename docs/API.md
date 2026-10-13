@@ -12,6 +12,10 @@ the user. Authentication is stateless and does not use cookies or HTTP sessions.
 | POST | `/api/auth/register` | `201`, `UserResponse` |
 | POST | `/api/auth/login` | `200`, `AuthResponse` |
 | GET | `/api/v1/health` | `200`, `HealthResponse` |
+| GET | `/api/movies` | `200`, array of `MovieResponse` |
+| GET | `/api/movies/{id}` | `200`, `MovieResponse` |
+| GET | `/api/theatres` | `200`, array of `TheatreResponse` |
+| GET | `/api/theatres/{id}` | `200`, `TheatreResponse` |
 | GET | `/api/shows` | `200`, array of `ShowResponse` |
 | GET | `/api/shows/{showId}` | `200`, `ShowResponse` |
 | GET | `/api/shows/{showId}/seats` | `200`, array of `ShowSeatResponse` |
@@ -91,8 +95,41 @@ curl --fail http://localhost:8080/api/v1/health
 This endpoint confirms HTTP handling and does not query the database. Actuator
 also exposes `GET /actuator/health`, `/actuator/health/liveness`, and
 `/actuator/health/readiness`. Readiness includes the database health indicator;
-liveness does not. Healthy responses return `200`; unhealthy health groups can
+liveness does not. Optional Redis is excluded from health/readiness. Healthy responses return `200`; unhealthy health groups can
 return `503`. Component details are hidden. Only health is exposed from Actuator.
+
+## Movie and theatre catalogue
+
+```bash
+curl --fail http://localhost:8080/api/movies
+curl --fail http://localhost:8080/api/movies/1
+curl --fail http://localhost:8080/api/theatres
+curl --fail http://localhost:8080/api/theatres/1
+```
+
+IDs are illustrative. List responses are arrays ordered by ID, or `[]`. Details
+use these DTOs; no JPA entities or private user data are exposed:
+
+```json
+{"id":1,"title":"The Sample Adventure","durationMinutes":120}
+```
+
+```json
+{"id":1,"name":"Sample Cinema","city":"Bengaluru"}
+```
+
+GET/HEAD reads are public. Invalid/non-positive IDs return `400`, absent details
+return `404`. ADMIN mutation authorization remains configured, but there are no
+write handlers. The lists have no filtering or pagination.
+
+Movie/theatre details use ten-minute server-side Redis TTLs and lists five-minute
+TTLs. Show detail/list TTLs are one minute/thirty seconds. JPA changes trigger
+after-commit targeted eviction, but metadata can be stale after native SQL,
+failed invalidation, or a racing reader until TTL expiry. Redis failure falls
+back to PostgreSQL without changing the success DTO/status contract. Errors are
+not cached. These caches do not change HTTP no-store headers or add ETags.
+Seat availability is always read from PostgreSQL; do not interpret any catalogue
+response as a seat guarantee. See [HLD](HLD.md#redis-catalogue-cache).
 
 ## List shows and get a show
 

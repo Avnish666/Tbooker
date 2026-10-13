@@ -161,23 +161,22 @@ Phase 8 now has a concrete gateway variation point justifying PaymentStrategy an
 an injected registry (decision 15).
 Actual patterns and SOLID limitations are documented in [LLD.md](LLD.md).
 
-## 9. Defer Redis, Kafka, and distributed workflows
+## 9. Keep allocation in PostgreSQL; defer brokers and service extraction
 
-**Decision:** Keep PostgreSQL authoritative and defer caches, brokers, real
-providers, and microservices. Phase 8 introduces only the requested mock payment
-boundary and its explicit recovery states.
+**Decision:** Keep PostgreSQL authoritative and defer brokers, real providers,
+and microservices. Phase 8 adds the mock payment boundary and recovery states.
+Phase 9 supersedes the earlier decision to defer catalogue caches only; it does
+not introduce Redis into inventory or payment correctness.
 
 **Reason:** The current requirements can be met and tested with one transactional
 database. Adding distributed state would introduce invalidation, duplicate
 delivery, ordering, retry, and recovery decisions. The mock payment workflow
 now exercises some of these concerns without adding network infrastructure.
 
-**Future direction:** Redis could cache suitable catalogue reads. Kafka could
-support notifications or analytics using a transactional outbox and idempotent
-consumers. These proposals, described in [HLD.md](HLD.md), are not installed
-components or implemented guarantees. No performance measurements justify them
-yet. Current verification evidence and failure-testing limits are in
-[TESTING.md](TESTING.md).
+**Future direction:** Kafka could support notifications or analytics using a
+transactional outbox and idempotent consumers. Those remain proposals, not
+installed components. Redis catalogue evidence is in [PERFORMANCE.md](PERFORMANCE.md);
+correctness and failure-testing limits are in [TESTING.md](TESTING.md).
 
 ## 10. Use Spring Security with short-lived JWTs and owner-scoped queries
 
@@ -377,3 +376,43 @@ booking reads, JWT rules, reservation expiry/cancellation, and uniqueness remain
 **Trade-off:** Clients using the old creation endpoint must adopt hold-and-pay.
 The schema allows a null historical payment link, so the supported service is
 responsible for enforcing the new payment requirement on new bookings.
+
+
+## 16. Cache public metadata with Redis, keep allocation uncached
+
+**Decision:** Spring Cache with shared Redis and typed JSON DTO values caches
+movie/theatre list/detail and show list/detail. A separate read service opens a
+transaction only on misses. Use explicit versioned keys and TTLs: movie/theatre
+10-minute details, 5-minute lists; show 1-minute details, 30-second lists. Select
+a no-op cache with an environment flag for baseline measurement or operations.
+
+**Reason:** These descriptive reads can tolerate bounded staleness and avoid
+repeated joins/mapping. The existing show entity graph already avoids N+1 queries;
+there was no evidence requiring new PostgreSQL indexes. Shared Redis provides
+cross-instance reuse that local process caches cannot. DTO-specific serializers
+avoid Hibernate proxies, Java serialization, and permissive polymorphic typing.
+
+**Invalidation:** JPA lifecycle events evict changed metadata and related show
+entries after commit; unrelated detail entries remain. Cache access is bypassed
+inside caller transactions. Native/bulk writers must explicitly publish an event
+or accept TTL staleness. There are no catalogue mutation endpoints in this phase.
+The event is not durable; races/crashes/failed invalidation can leave old data
+until a later fill's TTL expires. A durable outbox or versioned read protocol
+would strengthen this guarantee at additional complexity and is not implemented.
+
+**Failure trade-offs:** Cache failures degrade to PostgreSQL and observable
+warnings/counters. Redis is excluded from readiness and allocation. Command
+and connect timeouts bound individual waits, not whole-system outage load.
+No circuit breaker, stampede prevention, negative caching, or TTL jitter is added.
+An outage can produce extra latency, query load, and logs. Monitor before tuning.
+
+**Availability decision:** Leave `/api/shows/{id}/seats` uncached. Expiry can change
+availability without a write and without the scheduler running, so metadata-style
+invalidation is insufficient. PostgreSQL evaluates expiry and serializes all
+allocation decisions under row locks. A stale movie title never authorizes a hold.
+
+**Alternatives:** Local Caffeine avoids a network hop but would need per-instance
+invalidation. HTTP/CDN caching would need a separate public cache-control policy;
+Spring Security's existing no-store headers are retained. Redis locks or inventory
+ownership would add a second source of truth. None is introduced. The reproducible
+ABBA k6 comparison measures one workload; it is not a capacity or SLA claim.
