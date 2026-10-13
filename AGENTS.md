@@ -193,7 +193,8 @@
 
 - Read `docs/SCALING.md` before changing deployment, proxy, or distributed tests.
 - Preserve the host workflow in `compose.yaml`; scaled deployment is standalone.
-- Build the verified JAR before building its non-root Java runtime image.
+- Phase 12B builds from source in a multi-stage Dockerfile. Run Maven verification
+  separately before approving an image; image packaging deliberately skips tests.
 - No session affinity, in-memory allocation locks, or automatic NGINX write replay.
   Keep `proxy_next_upstream off`; document ambiguous responses and passive health.
 - Budget database connections across replicas; keep metric instance tags bounded.
@@ -202,3 +203,15 @@
 - Keep 100-way correctness contention separate from throughput benchmarks. Record
   expected 409s separately from unexpected failures; preserve raw result evidence.
 - Do not begin Phase 12 or introduce Kubernetes without a new request.
+
+
+## Phase 12B deployment conventions
+
+- Read `docs/DEPLOYMENT.md` before changing Compose, environment, or image builds.
+- Keep digest-pinned images, the source-only build context, and secrets outside images.
+- Keep the scaled network internal, with only NGINX exposing a host port.
+- PostgreSQL health gates app startup; Redis/Kafka need only be started so their
+  outage does not block backend recovery. Do not turn them into booking readiness dependencies.
+- Preserve same-image/profile Flyway locking, non-destructive startup, named database/
+  Kafka volumes, and ephemeral Redis. Never delete developer volumes as a repair step.
+- Verification must use fresh runner-owned projects. Keep the host Compose workflow working.

@@ -499,3 +499,18 @@ Hikari capacity is 20 per JVM (40 combined); the local PostgreSQL limit is 160.
 The 100-contender correctness runner uses 60 per JVM to force actual simultaneous
 row-lock waiters. Benchmarks retain the default 20. Extra pools increase database
 pressure; they do not increase ownership capacity for a hot seat.
+
+## Phase 12B initialization and persistence
+
+No migration is added or rewritten. The source-built replicas run identical
+Flyway V1–V7 migrations against one history table; Flyway serializes concurrent
+startup. The opt-in `dev` repeatable script runs after the versioned scripts and
+does not reset allocated inventory. Restarts validate existing checksums.
+
+PostgreSQL's named volume survives Compose container/network removal with
+`down`; it is not a backup. The deployment verification runner creates fresh
+private volumes, confirms paid bookings, restarts PostgreSQL and both JVMs,
+then recreates the whole stack with those volumes and checks unchanged migration
+history and permanent bookings. Schema upgrades require quiescing old writers
+and a tested backup/restore plan. No automated down migration is available.
+See [DEPLOYMENT.md](DEPLOYMENT.md) for the startup and recovery procedure.

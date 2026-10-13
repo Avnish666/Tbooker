@@ -1,6 +1,7 @@
 services:
   postgres:
-    image: postgres:17.11-bookworm
+    image: postgres:17.11-bookworm@sha256:3645570cccdfa447589da9f57dd740faa29b30938e861289a5574b6ca6b03826
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_NAME:-tbooker}
       POSTGRES_USER: ${DB_USERNAME:-tbooker}
@@ -17,7 +18,8 @@ services:
       start_period: 10s
 
   redis:
-    image: redis:7.4-alpine
+    image: redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+    restart: unless-stopped
     ports:
       - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
@@ -28,7 +30,8 @@ services:
       retries: 10
 
   kafka:
-    image: apache/kafka:3.9.1
+    image: apache/kafka:3.9.1@sha256:4ceccc577f03f51f6af8dbfda55194d0d892f4fa7913ffbded567ce3895622ed
+    restart: unless-stopped
     ports:
       - "127.0.0.1:${KAFKA_PORT:-9092}:9092"
     environment:

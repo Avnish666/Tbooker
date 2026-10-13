@@ -12,7 +12,9 @@ adds optional Redis caching for public catalogue metadata, PostgreSQL fallback,
 and reproducible k6 measurements. Phase 10 adds transactional-outbox booking
 events, Kafka publication, mock notifications, and an idempotent analytics projection.
 Phase 11 runs two JVMs behind NGINX with shared state, instance metrics, and
-distributed concurrency, recovery, and performance verification. Later
+distributed concurrency, recovery, and performance verification. Phase 12A adds
+GitHub Actions CI; Phase 12B makes the full local Compose deployment reproducible
+from source, with pinned images and persistence/recovery checks. Later
 features are planned in [the roadmap](docs/ROADMAP.md).
 
 ## Stack
@@ -110,24 +112,47 @@ see [the deployment diagram and setup](docs/SCALING.md).
 | [Testing](docs/TESTING.md) | Executed test evidence, concurrency protocol, and limitations. |
 | [Messaging](docs/MESSAGING.md) | Outbox, consumers, retries, DLT replay, configuration, and operational limits. |
 | [Performance](docs/PERFORMANCE.md) | Cache and one/two-JVM k6 comparisons, measured results, and limits. |
+| [Deployment](docs/DEPLOYMENT.md) | Fresh-clone startup, environment contract, migrations, recovery, and shutdown. |
 | [Scaling](docs/SCALING.md) | Two-JVM Compose deployment, NGINX, failover, monitoring, and disposable test runners. |
 | [Roadmap](docs/ROADMAP.md) | Completed phases and future milestones. |
 
 ## Local two-instance deployment
 
-Build the verified JAR, set private `.env` values as described below, then run:
+Install Docker Engine/Desktop with Linux containers, Compose v2.24+, and BuildKit.
+Budget 6–8 GiB for Docker plus host/build overhead. No host Java or Maven is needed
+for this path: the multi-stage Dockerfile builds from source using Java 21 and
+the checked-in Maven wrapper. It packages without tests; verification is a
+separate `./mvnw clean verify` step or CI check for the same commit.
+
+From a fresh clone (preserve an existing private `.env`):
 
 ```bash
-bash mvnw clean verify
-docker compose -f compose.scaled.yaml up -d --build --wait
+cp .env.example .env
+# Edit .env: set DB_PASSWORD and a random Base64 JWT_SECRET.
+# Generate a key locally with: openssl rand -base64 32
+# Optional: uncomment SPRING_PROFILES_ACTIVE=dev for sample catalogue data.
+docker compose -f compose.scaled.yaml config --quiet
+docker compose -f compose.scaled.yaml up -d --build --wait --wait-timeout 240
+docker compose -f compose.scaled.yaml ps
 curl --fail http://localhost:8080/actuator/health/readiness
+curl --fail http://localhost:8080/api/shows
+# Stop containers/network, retaining data:
+docker compose -f compose.scaled.yaml down
 ```
 
-This separate workflow runs NGINX, two application JVMs, PostgreSQL, Redis, and
-Kafka. It publishes only the NGINX loopback port. Do not combine it with the host
-workflow's Compose file. See [SCALING.md](docs/SCALING.md) for limits, monitoring,
-and disposable correctness/load runners; [PERFORMANCE.md](docs/PERFORMANCE.md)
-records measured one/two-instance comparisons.
+Only NGINX publishes a host port (loopback `8080`, configurable via `LB_PORT`).
+Two JVMs share PostgreSQL, Redis, and Kafka on an internal Docker network.
+Flyway serializes V1–V7 startup migrations; named PostgreSQL/Kafka volumes survive
+restarts and `down`. Redis is disposable. Do not remove volumes to troubleshoot.
+Without `dev`, the schema initializes with an empty catalogue; register a new
+account to exercise authentication (sample accounts have no password).
+
+See [DEPLOYMENT.md](docs/DEPLOYMENT.md) for the complete environment contract,
+health/log/rebuild commands, migration strategy, resource requirements, shutdown,
+common errors, and recovery limits. [Executed deployment checks](docs/TESTING.md#phase-12b-deployment-verification--2026-10-13)
+include restart persistence and optional-service outages. [SCALING.md](docs/SCALING.md) explains NGINX
+passive failure detection and distributed coordination. The original host Java
+workflow below remains separate; do not combine the two Compose files.
 
 ## Local setup
 
@@ -555,8 +580,8 @@ Later identity work includes password reset, email verification, and token revoc
 Real provider integration, automated reconciliation, refunds and payment
 operations need a later phase. Redis metadata caching and Kafka booking-event
 processing are implemented. Delivery work still includes
-production deployment/backup procedures. Phase 12A adds the CI workflow. The application Dockerfile and
-local NGINX deployment are implemented. See the [roadmap](docs/ROADMAP.md).
+production deployment/backup procedures. CI and reproducible local source-built
+Compose deployment are implemented through Phase 12B. See the [roadmap](docs/ROADMAP.md).
 
 The legacy immediate-booking endpoint now returns `409`. A hold-creation retry
 also returns `409` for an allocated seat;

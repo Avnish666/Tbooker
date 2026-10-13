@@ -1,0 +1,103 @@
+{
+  "phase": "12B",
+  "command": "./mvnw clean verify --batch-mode --no-transfer-progress (cloud Maven settings/cache paths supplied)",
+  "tests": 251,
+  "passed": 251,
+  "failed": 0,
+  "errors": 0,
+  "skipped": 0,
+  "classes": [
+    {
+      "class": "com.example.Tbooker.BookingConcurrencyIntegrationTests",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "class": "com.example.Tbooker.BookingEventsIntegrationTests",
+      "tests": 32,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "class": "com.example.Tbooker.BookingIntegrationTests",
+      "tests": 35,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "class": "com.example.Tbooker.CatalogueCacheIntegrationTests",
+      "tests": 24,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "class": "com.example.Tbooker.MessagingRecoveryIntegrationTests",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "class": "com.example.Tbooker.PaymentIntegrationTests",
+      "tests": 35,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "class": "com.example.Tbooker.ReservationCleanupIntegrationTests",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "class": "com.example.Tbooker.ReservationIntegrationTests",
+      "tests": 33,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "class": "com.example.Tbooker.SecurityIntegrationTests",
+      "tests": 42,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "class": "com.example.Tbooker.ShowCatalogueIntegrationTests",
+      "tests": 31,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "class": "com.example.Tbooker.TbookerApplicationTests",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "class": "com.example.Tbooker.config.JwtConfigurationTests",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "class": "com.example.Tbooker.controller.HealthControllerTests",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  ],
+  "finished_utc": "2026-10-13T17:58:08Z"
+}

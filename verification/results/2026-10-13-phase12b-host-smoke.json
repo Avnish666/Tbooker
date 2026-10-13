@@ -1,0 +1,17 @@
+{
+  "utc": "2026-10-13T18:08:16.968998+00:00",
+  "passed": 2,
+  "failed": 0,
+  "skipped": 0,
+  "host_services_healthy": 3,
+  "default_profile_empty_catalogue": true,
+  "flyway_versions": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ]
+}

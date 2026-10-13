@@ -515,3 +515,29 @@ resource-server filter chain. ABBA benchmark repetitions share infrastructure,
 fixtures, workload, and per-replica quotas; report added resources and expected
 409s explicitly. Instance-tagged metrics and Docker samples locate pressure;
 short local measurements are not production capacity estimates.
+
+
+## Phase 12B — Build from source and retain local state explicitly
+
+**Decision:** A pinned JDK builder uses the repository Maven wrapper; a separate
+non-root JRE stage contains only the JAR. CI/local Maven tests remain explicit,
+because an ordinary Docker build has no Testcontainers daemon. The build context
+excludes credentials and local artifacts. Image digests are intentionally updated
+with validation, not silently refreshed via moving tags.
+
+**Decision:** Keep the scaled and host Compose workflows separate. Only NGINX
+joins a host-facing bridge; the scaled service network is internal. PostgreSQL
+and Kafka retain named volumes. Redis is disposable metadata and has no volume.
+Both replicas get the same JWT and policy environment; internal addresses remain
+fixed service names. Required credentials have no default.
+
+**Migration strategy:** Same-image/profile startup uses Flyway's PostgreSQL lock.
+For schema changes, quiesce both writers and take a restorable backup first.
+Do not infer that a serialized migration makes mixed-version rolling upgrades safe.
+No rollback DDL or new schema change is introduced in this phase.
+
+**Trade-offs:** Immutable pins need maintenance. Source packaging duplicates CI
+compilation and is not itself a test result. Local volumes are not backups;
+Compose restart policies do not heal an unhealthy-but-running process. The setup
+remains single-host plaintext with one database/broker/proxy, not production HA.
+See [DEPLOYMENT.md](DEPLOYMENT.md) for the operational contract and verification.

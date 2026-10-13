@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Run real two-JVM/NGINX correctness and failure tests in a fresh disposable stack.
 Usage: python3 verification/multi_instance.py --output /tmp/phase11-e2e.json
-Requires a verified JAR and Docker Compose. No developer database is touched.
+Requires Docker Compose; the image builds from source. Run Maven verification
+separately first. No developer database is touched.
 """
 import argparse
 from collections import Counter
