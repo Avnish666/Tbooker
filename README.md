@@ -637,6 +637,11 @@ Compose deployment are implemented through Phase 12B; Phase 12C adds measured
 capacity evidence and documented limits. Phase 12D adds operational safeguards and
 a runbook, not production certification. See the [roadmap](docs/ROADMAP.md).
 
+The Phase 12D dependency lookup returned **27 advisory matches across nine runtime
+artifacts**. Configuration-specific applicability and upgrade follow-ups are in
+[the security review](docs/SECURITY.md#dependency-review-and-unresolved-advisories).
+Passing tests do not mean dependencies are vulnerability-free.
+
 The legacy immediate-booking endpoint now returns `409`. A hold-creation retry
 also returns `409` for an allocated seat;
 reservation confirmation retries recover the same booking using the reservation ID.

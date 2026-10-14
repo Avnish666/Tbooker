@@ -317,16 +317,36 @@ DTO bodies or enable wire/SQL debug. DLT records/diagnostic headers and database
 rows remain restricted operational data. The edge logs paths; never put secrets
 in URL paths.
 
-### Dependency review limits
+### Dependency review and unresolved advisories
 
-Resolved runtime versions were inspected on 2026-10-14: Boot 3.5.16, Spring Security
-6.5.11, Framework 6.2.19, Tomcat 10.1.55, Nimbus 10.10, Logback 1.5.34,
-PostgreSQL JDBC 42.7.11, Kafka client 3.9.2 and Netty 4.1.135.Final. The OSV Maven
-advisory lookup was blocked by the environment proxy (`403 Forbidden`). No
-successful advisory or container-image vulnerability scan is claimed; no CVE was
-confirmed or dismissed on that evidence. Repeat current SCA and image scans in an
-allowed environment, triage reachable advisories, then update managed versions
-and pins with regression tests. No speculative dependency upgrade was made.
+Resolved runtime versions were inspected on 2026-10-14. The initial advisory lookup
+was blocked by the proxy. After network access became available, OSV checked **110
+resolved Maven runtime artifacts** and returned **27 advisory matches affecting
+9 artifacts**. Details, queried versions, affected ranges and advisory links are
+retained in [dependency-audit.json](../verification/results/2026-10-14-phase12d-dependency-audit.json).
+These are confirmed affected-version matches, not 27 demonstrated application
+exploits. They were not suppressed or treated as a clean scan.
+
+| Artifact(s), current version | Matches | Source-based applicability / required follow-up |
+| --- | ---: | --- |
+| `at.yawk.lz4:lz4-java` 1.10.1 | 6 | Transitive Kafka codec. No direct application use of the flagged stream/XXHash APIs; Kafka/internal codec reachability is not fully ruled out. Container-private tmpfs reduces shared-temp exposure, not all codec risks. Highest listed fix: 1.11.4. |
+| `log4j-api` 2.24.3 | 1 | MapMessage JSON non-finite-number handling; application uses SLF4J/Logback ECS, with no MapMessage use found. Listed fix in the 2.25 line: 2.25.5. |
+| `netty-handler`, `netty-codec` 4.1.135.Final | 3 | SNI-server and Bzip2 decoder paths; this app uses Netty as a plaintext Redis client, not an SNI server/Bzip2 pipeline. Highest listed fix in 4.1: 4.1.137.Final. |
+| `jackson-databind` 2.21.4 | 9 | Flagged JsonView/Unwrapped/polymorphic identity, special JDK-type deserializers and type-ID caching are not used by request DTOs. No default typing is enabled. Future DTO/config changes could expose them. Highest listed fix in 2.21: 2.21.7. |
+| `jackson-core` 2.21.4 | 2 | DataInput parser error growth and numeric-pattern backtracking. HTTP uses bounded stream input, but complete transitive parsing reachability is not established. The 16 KiB guard limits input; it does not fix the library. Listed fix: 2.21.7. |
+| `tomcat-embed-core` 10.1.55 | 3 | Container DIGEST/FORM authentication and ordered Servlet security constraints. Tbooker uses Spring bearer security, disables form login and defines no container security constraints. Listed fix: 10.1.58. |
+| `spring-webmvc` 6.2.19 | 2 | SSE fragment rendering and XsltView; neither is present in this JSON API. Records list affected 6.2 through 6.2.19 and a fix in 7.0.9; do not infer a compatible 6.2 fix or blindly move to Framework 7. |
+| PostgreSQL JDBC 42.7.11 | 1 | TLS channel-binding downgrade when `channelBinding=require`. That mode is not configured in local Compose, which makes no TLS/channel-binding guarantee. Listed fix: 42.7.12. |
+
+The table summarizes all matches; consult the retained per-advisory ranges rather
+than treating a proposed version as an executed upgrade. Source absence is useful
+triage, not a proof that all transitive paths are unreachable. No exploit was
+demonstrated by this review and no dependency version was changed. Library
+remediation remains an explicit follow-up: select a supported Boot/BOM-compatible
+patch set, validate dependency convergence, rerun Maven and Docker recovery tests,
+and repeat the advisory lookup. These findings must be resolved or explicitly
+risk-assessed before public production deployment. Container OS/image layers,
+test/build dependencies and independent penetration testing were not scanned.
 
 ### Remaining limitations and future priorities
 

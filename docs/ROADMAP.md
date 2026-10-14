@@ -154,8 +154,10 @@ contracts where stated. See `API.md` for the current contract.
 Phase 12D security/observability/reliability work adds bounded JSON bodies,
 correlation and structured logs, PostgreSQL operation budgets, explicit cache
 health, conflict/failure metrics and an operational [runbook](RUNBOOK.md).
-Existing JWT/ownership/payment/concurrency controls remain unchanged. Dependency
-advisory scanning was blocked by the cloud proxy; see [SECURITY.md](SECURITY.md).
+Existing JWT/ownership/payment/concurrency controls remain unchanged. The final
+runtime advisory check returned 27 matches across nine artifacts; dependency
+remediation and configuration-specific triage are explicit follow-ups in
+[SECURITY.md](SECURITY.md).
 
 ## Future — Catalogue administration and scheduling
 

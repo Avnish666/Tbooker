@@ -764,8 +764,13 @@ the final full rerun passed all 263 without disabling an assertion. The focused
 `git diff --check`, changed-document local links and verification Python syntax
 passed. A basic repository pattern scan found no private keys, compact JWTs,
 GitHub tokens or AWS access keys; `.env` remains ignored and example secrets blank.
-This is not an exhaustive secret scan. Resolved dependency versions were reviewed,
-but the OSV advisory API was blocked by the cloud network proxy (403); no SCA or
-container vulnerability-clean claim is made. GitHub Actions, production TLS/HA,
+This is not an exhaustive secret scan. The OSV advisory API was initially blocked
+by the cloud network proxy (403). Once access became available, its completed
+runtime lookup checked 110 artifacts and returned 27 matches across nine artifacts;
+see [the retained audit](../verification/results/2026-10-14-phase12d-dependency-audit.json)
+and [configuration-specific triage](SECURITY.md#dependency-review-and-unresolved-advisories).
+No dependency/container vulnerability-clean claim is made. No application or
+dependency changes followed this lookup, so the regression results above still
+apply. GitHub Actions, production TLS/HA,
 load capacity under the new timeouts, backup restoration, multi-host partitions
 and real payment recovery were not verified by these checks.
