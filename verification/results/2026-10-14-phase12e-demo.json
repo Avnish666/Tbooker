@@ -1,0 +1,39 @@
+{
+  "phase": "12E",
+  "base_commit": "77966ec8b5659c3c9799a2dd4ccca30f600baa87",
+  "finished_at_utc": "2026-10-14T13:57:22.868576+00:00",
+  "scope": "Literal bash blocks from docs/DEMO.md executed sequentially on a new UUID-owned Compose project, then removed with only its disposable volumes. Not JUnit methods.",
+  "document_sha256": "e7fbce5e664a36ef0f54e11d293171c8642e220aca41836f5cb6feac14ec0051",
+  "blocks_passed": [
+    "prepare",
+    "start",
+    "authentication",
+    "catalogue",
+    "booking",
+    "duplicates",
+    "cache",
+    "events",
+    "routing",
+    "stop"
+  ],
+  "blocks_failed": 0,
+  "blocks_skipped": 0,
+  "expected_http_statuses": {
+    "register": "201",
+    "login": "200",
+    "shows": "200",
+    "seats": "200",
+    "hold": "201",
+    "reservation": "200",
+    "payment": "201",
+    "confirmation": "200",
+    "payment-replay": "200",
+    "confirmation-replay": "200",
+    "booked-seat-conflict": "409",
+    "own-booking": "200"
+  },
+  "redis_hit_increase": 10,
+  "distinct_nginx_upstreams": 2,
+  "event_assertion": "One PUBLISHED outbox event, two processed markers and a mock notification for the paid booking",
+  "jwt_pattern_in_console": false
+}

@@ -1,6 +1,8 @@
 # High-level design
 
-This document describes the implemented backend and local deployment through Phase 12B. Proposed
+For a shorter interview walkthrough, start with the [five design diagrams](DIAGRAMS.md).
+
+This document describes the implemented backend and local deployment through Phase 12D. Proposed
 extensions are explicitly marked as future work. See [LLD](LLD.md) for classes,
 [database design](DATABASE.md) for constraints, and [API](API.md) for contracts.
 
@@ -237,8 +239,10 @@ next successful claim persists that transition.
 The scheduler only normalizes persisted state. Its delay/backlog can affect
 storage freshness, but cannot extend confirmation rights or prevent a new
 claim. Monitor backlog in a future operations phase. Bounded batches and
-`SKIP LOCKED` avoid making cleanup wait behind a busy seat; no claim about tested
-multi-node throughput or clock failover is made.
+`SKIP LOCKED` avoid making cleanup wait behind a busy seat. Multi-instance tests
+and measured workloads are recorded in [SCALING](SCALING.md) and
+[PERFORMANCE_SUMMARY](PERFORMANCE_SUMMARY.md). Database clock failover behavior
+has not been verified.
 
 ## Potential bottlenecks and current limitations
 

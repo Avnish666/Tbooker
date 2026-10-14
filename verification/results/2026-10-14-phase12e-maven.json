@@ -1,0 +1,133 @@
+{
+  "phase": "12E",
+  "base_commit": "77966ec8b5659c3c9799a2dd4ccca30f600baa87",
+  "finished_at_utc": "2026-10-14T13:47:56Z",
+  "command": "SPRING_TEST_MOCKMVC_PRINT=NONE TZ=UTC ./mvnw clean verify --batch-mode --no-transfer-progress -s /workspace/.cache/maven/settings.xml -Dmaven.repo.local=/workspace/.cache/maven/repository",
+  "passed": 263,
+  "tests": 263,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "suites": [
+    {
+      "name": "com.example.Tbooker.BookingConcurrencyIntegrationTests",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "4b44dd62c767d6e111f6b65f91941fb561bfd951f0202a5458cd99b39126379e"
+    },
+    {
+      "name": "com.example.Tbooker.BookingEventsIntegrationTests",
+      "tests": 32,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "115f0af860bf985aa432aabc37c3dcb1a5257c516db55afff41d2f4a2da63d79"
+    },
+    {
+      "name": "com.example.Tbooker.BookingIntegrationTests",
+      "tests": 35,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "60dbde9baad6e1118d977475ea728c7cddd7fb04c8b6a3b720793371ffeb6c8c"
+    },
+    {
+      "name": "com.example.Tbooker.CatalogueCacheIntegrationTests",
+      "tests": 24,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "dae6f444df147c7b821abdfa10e4b2bb9bb0612541f912035b130d3bf6d10a8f"
+    },
+    {
+      "name": "com.example.Tbooker.MessagingRecoveryIntegrationTests",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "a67a17ffeaea433fb8a230b341cdd6636899dae88d1da078dbb0974d490ad754"
+    },
+    {
+      "name": "com.example.Tbooker.OperationalSecurityIntegrationTests",
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "93ce963dedb368640467edae4864c1a651be88a26f546520cca9ce41a5b71393"
+    },
+    {
+      "name": "com.example.Tbooker.PaymentIntegrationTests",
+      "tests": 35,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "b5470fb6798c3066b31d9bfed08b940a03a47d25cb050fd05ebfe45aeaa9a3c0"
+    },
+    {
+      "name": "com.example.Tbooker.ReservationCleanupIntegrationTests",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "49d710ff04c9004ba7c8b94eaeff4ffa981ae5954a85b6fc146b2dc670f497ed"
+    },
+    {
+      "name": "com.example.Tbooker.ReservationIntegrationTests",
+      "tests": 33,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "da0fb0d3eb5e78ce40e0a5d68204bb763633df32bc407d7a801e5af7fb5c9c28"
+    },
+    {
+      "name": "com.example.Tbooker.SecurityIntegrationTests",
+      "tests": 42,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "d753ad4daac147f300b248e18c4920eb7b4f468d00fcf9f7d994919576e2e98c"
+    },
+    {
+      "name": "com.example.Tbooker.ShowCatalogueIntegrationTests",
+      "tests": 31,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "aa589cf4483d38b77c380a713ce9a1fc44ce4bb2fdd35a2fe8543c50c8c3e7a5"
+    },
+    {
+      "name": "com.example.Tbooker.TbookerApplicationTests",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "cce0c91b8c15c386720cfe5c2a3bc40a588acd74c057c4beec675baddd6b3ae9"
+    },
+    {
+      "name": "com.example.Tbooker.config.JwtConfigurationTests",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "7e1aed0d2f40c46974e9f0c0f936ef11007704b12a5ace9bfe1e9f82f6774d7f"
+    },
+    {
+      "name": "com.example.Tbooker.config.ObservabilityTests",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "d4e29aa58f9bb5e2c097b06cccbf25ec55c2987864446b79b0d89ebd1f6f63f9"
+    },
+    {
+      "name": "com.example.Tbooker.controller.HealthControllerTests",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "sha256": "832d988be102b524241a0ce59f6dfc91341e9defd607b4687b6f72b4ecc08468"
+    }
+  ]
+}

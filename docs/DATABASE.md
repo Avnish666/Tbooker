@@ -294,7 +294,7 @@ behavior; it is not a catalogue repair or synchronization job.
 Normal startup seeds nothing. Use a dedicated development database: removing the
 `dev` location from a database that already records its repeatable migration can
 fail migration validation. IDs are generated, so inspect API/SQL results instead
-of relying on the illustrative IDs in examples. See [local setup](../README.md#local-setup).
+of relying on the illustrative IDs in examples. See [local setup](../README.md#quick-start-the-complete-stack).
 
 ## Reservation storage and integrity (V5)
 

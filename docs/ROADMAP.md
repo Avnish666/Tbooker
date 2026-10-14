@@ -159,6 +159,15 @@ runtime advisory check returned 27 matches across nine artifacts; dependency
 remediation and configuration-specific triage are explicit follow-ups in
 [SECURITY.md](SECURITY.md).
 
+## Phase 12E — Portfolio, documentation and resume
+
+- Reorganize the README around reproducible setup, implemented behavior and evidence.
+- Add five source-aligned architecture/class/sequence/outbox/state diagrams.
+- Summarize verified Phase 12C capacity data and label the separate Phase 9 cache experiment.
+- Provide an executable API demo, realistic resume bullets and interview questions.
+- Recheck regression, demo commands, documentation links, Mermaid and CI syntax.
+- No new application functionality, deployment guarantees or performance claims.
+
 ## Future — Catalogue administration and scheduling
 
 - Add validated write use cases for catalogues and venue layouts when requested.
@@ -207,5 +216,6 @@ remediation and configuration-specific triage are explicit follow-ups in
 - Extend the published Phase 12C evidence as deployment targets and traffic
   assumptions change, preserving earlier measurements and limitations.
 
-Advance one phase at a time. Phase 12D adds operational safeguards; real
-providers, real email, refunds, and confirmed-booking cancellation remain future work.
+Advance one phase at a time. Phase 12E packages the implemented system and its
+verification evidence for review; real providers, real email, refunds, and
+confirmed-booking cancellation remain future work.

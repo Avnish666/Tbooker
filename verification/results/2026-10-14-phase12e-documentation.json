@@ -1,0 +1,59 @@
+{
+  "phase": "12E",
+  "base_commit": "77966ec8b5659c3c9799a2dd4ccca30f600baa87",
+  "finished_at_utc": "2026-10-14T20:12:10.054812+00:00",
+  "scope": "Documentation checks, not JUnit methods or fresh performance measurements. HTTP links were not batch-crawled.",
+  "local_markdown_links_and_anchors": {
+    "markdown_files": 22,
+    "local_links_checked": 216,
+    "shell_blocks_checked": 17,
+    "mermaid_diagrams_extracted": 26,
+    "errors": []
+  },
+  "bash_syntax": "17 Bash blocks in README, DEMO and PERFORMANCE_SUMMARY passed bash -n",
+  "mermaid": {
+    "version": "11.17.2",
+    "syntax_checked": 26,
+    "rendered": 26,
+    "errors": [],
+    "renderer": "Headless Chromium via local Chrome DevTools Protocol"
+  },
+  "workflow": {
+    "tool": "actionlint",
+    "version": "1.7.12",
+    "file": ".github/workflows/ci.yml",
+    "exit_code": 0
+  },
+  "diff_check": "git diff --check passed",
+  "secret_check": "No JWT, GitHub token, AWS access-key, private-key or DB_PASSWORD/JWT_SECRET assignment patterns found in changed files; .env remains untracked. Pattern scan is not a comprehensive security audit.",
+  "benchmark_evidence": "Reused retained Phase 12C 38-run validation and separate Phase 9 four-run cache report; no load rerun.",
+  "github_ci_baseline": {
+    "commit": "77966ec8b5659c3c9799a2dd4ccca30f600baa87",
+    "conclusion": "success",
+    "url": "https://github.com/Avnish666/Tbooker/actions/runs/38573607657"
+  },
+  "markdown_sha256": {
+    "docs/DEMO.md": "e7fbce5e664a36ef0f54e11d293171c8642e220aca41836f5cb6feac14ec0051",
+    "docs/DIAGRAMS.md": "7b845143796883c90fd27c87d4e16a0e679c99a8e79997dd6c70642678ac6790",
+    "docs/PERFORMANCE_SUMMARY.md": "fbfdd04fd0e51352c167c429d0205c44da4c06edb4635ee3c7980ed893615cda",
+    "docs/RESUME.md": "d3ffa40f27686609e0a0e6cd7463dd972f42e13373fd5456611e9f6220ad5fd0",
+    "AGENTS.md": "2af14554df00a94a0695bea78fb390b4f8afe4d40c39b77529fc41fa73ea3cde",
+    "README.md": "40a01b00c9295bbefce1bc43cb35396829347378b2d35309c8b6353d3415bece",
+    "docs/API.md": "14f844bdc4e1ca944d005cef89b18e24a565913d0414520f6b93a4a3650124f1",
+    "docs/BOOKING.md": "d5d40cfc8826d0f21982a3b3e994733d0354937caca963508c8ea407d8bcce0a",
+    "docs/DATABASE.md": "982d71afe29664d6380785f54156de60229233ce1492d08ac26972adbc6f3d76",
+    "docs/DECISIONS.md": "c16b809924abbe5d41da88894eb80cfdfd68fa0614235b93b1dd1380b10d11c0",
+    "docs/DEPLOYMENT.md": "e9abe4eceea87a392ea23b0ac4e7c5fb53fe412fb3628772207a32080a071922",
+    "docs/HLD.md": "285dbc35ed9d4197ede147685818143609e5c5f845fba3201ca36c598906b83d",
+    "docs/LLD.md": "e33aa243fac0907a7402845653c2d9fe24dcbade55a0f3f4a9b9168134983793",
+    "docs/MESSAGING.md": "f970c617d1c330e4e8eae643a2e807fe6e9ccd8a97a46e1fb9028c5981843dd5",
+    "docs/PERFORMANCE.md": "4977c9511034187ac81c611c9c16faabc9cf4686f5654cb2584ccd3fde321a66",
+    "docs/ROADMAP.md": "9b0f280df535a22ca57f3a139dab136f5cf8cf889898911672587c1910fc2759",
+    "docs/RUNBOOK.md": "3eab276cfc42912c3421f872bc6a5f73b20b89c4257fff462de1f2ed35dada82",
+    "docs/SCALING.md": "99a3dc2fc7b350cee5cf797cf7998fa11988441287484d0e5dcb8443de6a1f68",
+    "docs/SECURITY.md": "74fc00fabfa3b34832ce2978c02f1ab9e9ce64e27c69c2700b0f1ca61a0e5c3b",
+    "docs/TESTING.md": "2131b472a5e9c2ddade6f18e4bc47252819e02f41fe1e1cd9a3b581ed0a4d2d8",
+    "performance/phase12c/README.md": "736fe078690477aef95b8b3e37f9c91d92ca667586e9cfe1f9ddcbc97ceab0db",
+    "performance/results/2026-10-14-phase12c/tables.md": "bccbbcf2bd5b92d9e329322754a2e96ca567a1066aa279454b72fc70a9f8ddbb"
+  }
+}
