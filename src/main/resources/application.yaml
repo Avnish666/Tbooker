@@ -41,6 +41,13 @@ spring:
     password: ${SPRING_DATASOURCE_PASSWORD:${DB_PASSWORD}}
     hikari:
       connection-init-sql: SET TIME ZONE 'UTC'
+      connection-timeout: ${DB_POOL_TIMEOUT_MS:3000}
+      validation-timeout: 1000
+      data-source-properties:
+        connectTimeout: 3
+        socketTimeout: 20
+        cancelSignalTimeout: 2
+        options: -c lock_timeout=${DB_LOCK_TIMEOUT:5s} -c statement_timeout=${DB_STATEMENT_TIMEOUT:15s}
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -72,6 +79,21 @@ spring:
 
 server:
   port: ${SERVER_PORT:8080}
+  tomcat:
+    connection-timeout: 10s
+
+logging:
+  structured:
+    format:
+      console: ecs
+    json:
+      # Library throwables may carry SQL/failing-row data even when their summary
+      # is safe. Retain error.type; inspect database state instead of printing it.
+      exclude: [error.message, error.stack_trace]
+  level:
+    # PostgreSQL exception details can contain failing-row values; application
+    # failure counters and sanitized summaries replace this raw SQL logger.
+    org.hibernate.engine.jdbc.spi.SqlExceptionHelper: "OFF"
 
 catalogue:
   cache:
@@ -111,12 +133,15 @@ security:
 
 management:
   metrics:
+    distribution:
+      percentiles:
+        http.server.requests: 0.95
     tags:
       application: tbooker
       instance: ${INSTANCE_ID:local}
   health:
     redis:
-      enabled: false # Optional cache must not make booking readiness depend on Redis.
+      enabled: true # Observable independently; readiness remains PostgreSQL-only.
   endpoints:
     web:
       exposure:
@@ -127,6 +152,8 @@ management:
       probes:
         enabled: true
       group:
+        cache:
+          include: redis
         messaging:
           include: kafkaConnectivity
         readiness:

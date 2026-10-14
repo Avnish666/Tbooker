@@ -1,0 +1,111 @@
+{
+  "phase": "12B",
+  "utc": "2026-10-14T13:26:56.650704+00:00",
+  "passed": 8,
+  "failed": 0,
+  "skipped": 0,
+  "tests": [
+    {
+      "case": "clean_start_and_migrations",
+      "status": "passed",
+      "details": {
+        "healthy_services": 6,
+        "versions": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "sample_migrations": 1,
+        "internal_network": true,
+        "host_ports": [
+          "nginx"
+        ]
+      },
+      "seconds": 0.538
+    },
+    {
+      "case": "jwt_and_paid_booking",
+      "status": "passed",
+      "details": {
+        "upstreams": {
+          "172.18.0.5:8080": 10,
+          "172.18.0.6:8080": 10
+        },
+        "registration": 201,
+        "login": 200,
+        "booking": 1,
+        "missing_token": 401,
+        "invalid_token": 401,
+        "foreign_booking": 404
+      },
+      "seconds": 3.283
+    },
+    {
+      "case": "restart_applications",
+      "status": "passed",
+      "details": {
+        "both_restarted": true,
+        "booking_preserved": true,
+        "migrations_unchanged": true
+      },
+      "seconds": 27.754
+    },
+    {
+      "case": "restart_one_backend",
+      "status": "passed",
+      "details": {
+        "survivor_healthy": true,
+        "rejoined_upstreams": 2,
+        "booking_preserved": true
+      },
+      "seconds": 28.152
+    },
+    {
+      "case": "postgres_restart",
+      "status": "passed",
+      "details": {
+        "outage_readiness_http": 503,
+        "pools_reconnected": true,
+        "booking_preserved": true
+      },
+      "seconds": 6.219
+    },
+    {
+      "case": "redis_outage_and_backend_restart",
+      "status": "passed",
+      "details": {
+        "catalogue_fallback": 200,
+        "backend_restarted_during_outage": true,
+        "paid_booking": true
+      },
+      "seconds": 35.215
+    },
+    {
+      "case": "kafka_outage_and_backend_restart",
+      "status": "passed",
+      "details": {
+        "backend_restarted_during_outage": true,
+        "paid_booking": true,
+        "backlog_recovered": true
+      },
+      "seconds": 106.155
+    },
+    {
+      "case": "recreate_stack_with_existing_volumes",
+      "status": "passed",
+      "details": {
+        "recreated_containers": 6,
+        "volumes_retained": true,
+        "booking_preserved": true,
+        "payment_retry": 200,
+        "migrations_unchanged": true,
+        "secrets_absent_from_logs": true
+      },
+      "seconds": 46.843
+    }
+  ]
+}

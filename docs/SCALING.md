@@ -161,6 +161,11 @@ No dashboard or alert deployment is included. Metrics sampling adds load and can
 miss short spikes; process counters reset after a restart. Benchmark p50/p95 come
 from k6 client observations, not averages of server-side percentile estimates.
 
+Phase 12D additionally exposes local HTTP p95, reservation/payment failure counters
+and separate Redis health. Database wait budgets and correlated JSON logs apply
+equally to both replicas. See [RUNBOOK.md](RUNBOOK.md) for current meter names and
+failure investigation; Phase 11/12C measurements below retain their original scope.
+
 ## Verification and benchmarks
 
 The executable runners create fresh UUID-named Compose projects with private

@@ -97,6 +97,7 @@ Changing the signing key invalidates existing tokens; there is no rotation flow.
 | --- | --- |
 | `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD` | Database, bootstrap role, and password; defaults for names are `tbooker`, password has no default. |
 | `DB_POOL_SIZE` | 20 connections per replica; total 40 versus PostgreSQL's configured 160. |
+| `DB_POOL_TIMEOUT_MS`, `DB_LOCK_TIMEOUT`, `DB_STATEMENT_TIMEOUT` | Phase 12D: `3000` ms acquisition, `5s` lock wait, `15s` statement limit. Applies to Flyway too; review before large migrations. |
 | `JWT_SECRET`, `JWT_ISSUER`, `JWT_AUDIENCE`, `JWT_TTL` | Required Base64 key; defaults `tbooker`, `tbooker-api`, `PT15M` (supported 1–60 minutes). |
 | `SPRING_PROFILES_ACTIVE` | Empty normally; `dev` enables repeatable sample catalogue migration on a dedicated development database. |
 | `LB_BIND_ADDRESS`, `LB_PORT` | `127.0.0.1`, `8080`; the sole host-facing endpoint. Changing the address can expose plaintext authenticated traffic; no TLS is configured. |
@@ -203,7 +204,8 @@ manual stops. Apps get 35 seconds to stop, with a 30-second graceful phase.
   during an optional-service outage, use `up -d --no-deps --no-build app-b`, then
   check its readiness. This does not make PostgreSQL optional.
 - PostgreSQL outage interrupts database operations; Hikari reconnects after
-  recovery. NGINX can return 504 before the pool times out. Committed rows survive
+  recovery. Phase 12D bounds pool acquisition to 3 seconds and SQL waits separately;
+  cumulative operations or stalled networking can still outlast NGINX. Committed rows survive
   a process/container restart on the same volume; disk/volume loss is different.
 - Redis outage adds timeout latency then database fallback. Kafka outage leaves
   durable outbox work pending. After recovery publishers reclaim leases and

@@ -9,6 +9,7 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 import datetime
 import json
+import re
 from pathlib import Path
 import threading
 import time
@@ -67,6 +68,33 @@ def routing_auth_metrics(s):
         if item['Id'] != s.containers['nginx']:
             assert not any(item['NetworkSettings']['Ports'].values()), item['Name']
     return {'upstreams':dict(Counter(x['upstream'] for x in calls)), 'internal_host_ports':0}
+
+
+def operational_edge_controls(s):
+    # The public edge must replace even a syntactically valid caller-supplied ID.
+    supplied = 'a' * 32
+    denied = s.http('/api/bookings', headers={'X-Request-ID': supplied})
+    assert denied['status'] == 401
+    correlation = denied['correlation_id']
+    assert re.fullmatch('[a-f0-9]{32}', correlation) and correlation != supplied
+    assert denied['body']['correlationId'] == correlation
+    oversized = s.http('/api/auth/login', 'POST', {'password': 'not-a-real-password-' + 'x' * 16384})
+    assert oversized['status'] == 413
+    assert re.fullmatch('[a-f0-9]{32}', oversized['correlation_id'])
+    # Force one measured request in each JVM, then inspect each registry directly.
+    for _ in range(10): assert s.http('/api/shows')['status'] == 200
+    for instance in ('app-a', 'app-b'):
+        percentile = s.metric(instance, 'http.server.requests.percentile')
+        assert any(tag['tag'] == 'phi' and '0.95' in tag['values'] for tag in percentile['availableTags'])
+        for name in ('jvm.memory.used', 'jvm.gc.pause', 'hikaricp.connections.active'):
+            assert s.metric(instance, name)['measurements']
+    assert s.http('/actuator/health/cache')['status'] == 200
+    logs = s.compose('logs', '--no-color', '--no-log-prefix', 'nginx')
+    entries = [json.loads(line) for line in logs.splitlines() if line.startswith('{')]
+    assert any(entry.get('correlationId') == correlation and entry['status'] == 401 for entry in entries)
+    assert 'not-a-real-password-' not in logs
+    return {'edge_overwrites_request_id': True, 'security_problem_correlated': True,
+            'body_limit_http': 413, 'per_instance_p95': True, 'nginx_json_logs': True}
 
 
 def hundred_contenders(s):
@@ -334,7 +362,7 @@ def consumer_group_members(s):
     return output
 
 
-CASES=[routing_auth_metrics,hundred_contenders,expiration_cleanup_and_reclaim,cancel_then_other_owner,
+CASES=[routing_auth_metrics,operational_edge_controls,hundred_contenders,expiration_cleanup_and_reclaim,cancel_then_other_owner,
        confirmation_waits_past_expiry,confirmation_commits_after_deadline,concurrent_payment_results,
        redis_outage,kafka_outage,backend_crash_restart_active_hold,payment_interrupted_without_proxy_replay,
        publisher_crash_after_ack,consumer_group_members]

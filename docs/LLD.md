@@ -742,3 +742,23 @@ Transactional Outbox, and Idempotent Consumer remain the relevant patterns.
 SRP keeps routing in NGINX and eligibility in transactional services. The only
 application configuration addition is Micrometer `application`/`instance` tags.
 See [SCALING.md](SCALING.md) for process coordination and failure boundaries.
+
+## Phase 12D request and operational responsibilities
+
+| Class / configuration | Responsibility |
+| --- | --- |
+| `RequestCorrelationFilter.doFilterInternal` | Before security: constrain/generate diagnostic ID, set response header and scope MDC with finally cleanup. |
+| `RequestBodyLimitFilter.doFilterInternal` | After security: read at most 16385 bytes, reject oversized bodies, replay bounded input to the synchronous MVC pipeline. |
+| `ApiExceptionHandler` | Preserve domain errors, add correlation to handled Problem Details, count conflicts, classify resource/transient DB errors as generic 503. Uses Spring's MVC exception-handler base for standard validation errors. |
+| `SecurityProblemHandler` | Preserve generic 401/403, adding the same request correlation. |
+| `OperationalFailures.record` | Bounded operation enum, counters for every failure, sanitized warning at most once per operation per JVM per 30 seconds. |
+| `SchedulingErrorConfiguration.safeScheduledFailures` | Customize Boot's scheduler error handler so failed ticks remain observable without raw DB exception dumps. Future ticks still run. |
+| `CatalogueCacheErrors` | Preserve fallback semantics and per-operation counters, throttle repeated warnings. |
+| `PaymentResultProcessor.confirmKnownSuccess` | Existing separate financial/allocation transactions unchanged; record confirmation/reconciliation failures. |
+| `application.yaml` / NGINX | SQL/pool budgets, ECS logging and local HTTP percentiles; edge IDs, JSON access logs and existing no-replay policy. |
+
+These use servlet Filter/Decorator, centralized exception handling, constructor
+DI and configuration customization at existing extension points. SRP separates
+transport/diagnostics from domain eligibility. No new abstract factory, domain
+service layer or distributed-lock algorithm is introduced. Metric labels are
+bounded operation/cache/route/instance values, never owner/payment/request IDs.

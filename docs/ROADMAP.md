@@ -149,6 +149,16 @@ contracts where stated. See `API.md` for the current contract.
 - Exact steady-state maximum capacity, longer soak tests, isolated profiling and
   production tuning remain future measurements; no business logic was changed.
 
+## Phase 12D — Security, observability and reliability
+
+Phase 12D security/observability/reliability work adds bounded JSON bodies,
+correlation and structured logs, PostgreSQL operation budgets, explicit cache
+health, conflict/failure metrics and an operational [runbook](RUNBOOK.md).
+Existing JWT/ownership/payment/concurrency controls remain unchanged. The final
+runtime advisory check returned 27 matches across nine artifacts; dependency
+remediation and configuration-specific triage are explicit follow-ups in
+[SECURITY.md](SECURITY.md).
+
 ## Future — Catalogue administration and scheduling
 
 - Add validated write use cases for catalogues and venue layouts when requested.
@@ -179,7 +189,7 @@ contracts where stated. See `API.md` for the current contract.
 
 - Extend Phase 12C's local capacity evidence with stable warmup, finer rate searches,
   longer repetitions, separate load-generator hosts and realistic production traffic.
-- Expand profiling, structured logs, tracing and query/index investigations using
+- Expand profiling, existing structured logs, tracing and query/index investigations using
   the observed CPU, connection-queue, hot-row and event-processing pressure.
 - Use measured cache behavior to decide whether to add stampede control, a
   circuit breaker, durable invalidation, and TTL jitter.
@@ -193,9 +203,9 @@ contracts where stated. See `API.md` for the current contract.
 - Separate runtime and migration database privileges.
 - Configure secrets, TLS, backups, restoration checks, and migration rollout.
 - Extend the local health probes and graceful shutdown configuration to production
-  rollout procedures; verify shutdown during sustained traffic and add runbooks.
+  rollout procedures; verify shutdown during sustained traffic and extend the runbook.
 - Extend the published Phase 12C evidence as deployment targets and traffic
   assumptions change, preserving earlier measurements and limitations.
 
-Advance one phase at a time. Phase 12C adds performance evidence only; real
+Advance one phase at a time. Phase 12D adds operational safeguards; real
 providers, real email, refunds, and confirmed-booking cancellation remain future work.

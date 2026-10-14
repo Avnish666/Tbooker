@@ -5,8 +5,8 @@ import com.example.Tbooker.entity.PaymentConfirmationStatus;
 import com.example.Tbooker.exception.PaymentConflictException;
 import com.example.Tbooker.exception.ReservationConflictException;
 import com.example.Tbooker.payment.PaymentStrategyRegistry;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.example.Tbooker.config.OperationalFailures;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -16,15 +16,19 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @Transactional(propagation = Propagation.NEVER)
 public class PaymentResultProcessor {
-	private static final Logger log = LoggerFactory.getLogger(PaymentResultProcessor.class);
 	private final PaymentTransactions transactions;
 	private final PaymentStrategyRegistry registry;
 	private final ReservationService reservations;
+	private final OperationalFailures failures;
+	private final MeterRegistry metrics;
 
-	public PaymentResultProcessor(PaymentTransactions transactions, PaymentStrategyRegistry registry, ReservationService reservations) {
+	public PaymentResultProcessor(PaymentTransactions transactions, PaymentStrategyRegistry registry,
+			ReservationService reservations, OperationalFailures failures, MeterRegistry metrics) {
 		this.transactions = transactions;
 		this.registry = registry;
 		this.reservations = reservations;
+		this.failures = failures;
+		this.metrics = metrics;
 	}
 
 	public void process(Long paymentId) {
@@ -42,9 +46,10 @@ public class PaymentResultProcessor {
 			reservations.confirmForPayment(payment.reservationId(), payment.userId(), payment.id());
 		} catch (ReservationConflictException | PaymentConflictException unavailable) {
 			transactions.requireReconciliation(paymentId);
+			metrics.counter("payments.confirmation.reconciliation").increment();
 		} catch (DataAccessException failure) {
 			// The successful provider outcome is already committed. Leave PENDING for a safe retry.
-			log.warn("Booking confirmation for payment {} requires retry after database failure", paymentId, failure);
+			failures.record(OperationalFailures.Operation.PAYMENT_CONFIRMATION, failure);
 		}
 	}
 }

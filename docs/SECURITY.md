@@ -1,4 +1,4 @@
-# Authentication and authorization — Phases 6–11
+# Authentication, authorization and operational security
 
 The application authenticates local accounts with BCrypt and issues short-lived
 JWT bearer tokens. Spring Security protects booking routes and checks roles;
@@ -36,7 +36,8 @@ password hashes. Spring Security adds cache-control headers, including `no-store
 
 ```mermaid
 flowchart TD
-    Request[HTTP request] --> Chain[Spring SecurityFilterChain]
+    Request[HTTP request] --> Correlation[RequestCorrelationFilter]
+    Correlation --> Chain[Spring SecurityFilterChain]
     Chain --> Bearer[BearerTokenAuthenticationFilter]
     Bearer --> Present{Bearer token present?}
     Present -- Yes --> Decoder[NimbusJwtDecoder and validators]
@@ -45,7 +46,8 @@ flowchart TD
     Present -- No --> Anonymous[Anonymous request]
     Principal --> Rules[AuthorizationFilter and route rules]
     Anonymous --> Rules
-    Rules -- Allowed --> Controller[Controller and DTO validation]
+    Rules -- Allowed --> Limit[RequestBodyLimitFilter: 16 KiB]
+    Limit --> Controller[Controller and DTO validation]
     Rules -- Authentication missing --> Unauthorized
     Rules -- Insufficient role --> Forbidden[403 Problem Detail]
     Controller --> Service[Service and owner-scoped repository query]
@@ -280,3 +282,95 @@ host-facing bridge and publishes loopback HTTP. PostgreSQL/Redis/Kafka and backe
 ports remain unpublished. This does not replace TLS, Redis/broker authentication,
 or production firewall policy. Deliberately changing `LB_BIND_ADDRESS` can expose
 plaintext traffic outside the host. See [DEPLOYMENT.md](DEPLOYMENT.md).
+
+## Phase 12D review: verified controls and confirmed gaps
+
+The review started from `7423ae6`, the Phase 12C merge into main (PR #8).
+Existing password/JWT and owner predicates were retained, not replaced. No
+authentication bypass, cross-owner booking bypass or public payment-result write
+was found in this source review and regression tests; this is not exhaustive
+penetration testing.
+
+| Area | Finding and disposition |
+| --- | --- |
+| Authentication | BCrypt cost 12 and byte limit; HS256-only Nimbus signatures; required expiry/issued-at, issuer/audience, positive Long subject and USER/ADMIN role checks. Existing invalid/expired/tampered/incorrect-role tests retained. |
+| Authorization | Public exact catalogue routes; default deny; ADMIN-only metrics; owner-scoped reservation/payment/booking access even for ADMIN. Existing real-token tests cover these boundaries. |
+| Payment integrity | Owner/key uniqueness and command binding, independent provider verification, stale/duplicate version handling, and paid-only confirmation remain intact. No new callback or automatic retry. |
+| Confirmed request-size gap | NGINX already limited bodies, but direct JVM requests had no JSON-body bound. A post-security filter now buffers at most 16385 bytes and rejects over 16384 with 413, including chunked input before Jackson. This bounds body allocation, not request rate or total concurrent memory. |
+| Confirmed logging exposure | Application handlers logged raw DB throwables, which can contain failing-row data. They now emit class/category summaries. Hibernate's raw SQL-error logger is off; ECS output omits throwable message and stack fields, including library exceptions. A test injects a private row sentinel and checks response/logs. |
+| Confirmed log-volume gap | Cache outage warnings occurred for every cache operation. Warnings are now bounded per JVM while every failure is counted. Operational DB/payment/scheduler failures have per-operation limits. Framework/broker log volume still needs external retention controls. |
+| Confirmed wait-budget gap | Pool acquisition used its 30-second default and PostgreSQL had no explicit lock/statement limits. Defaults are now 3-second acquisition, 5-second lock and 15-second statement waits; see the runbook for migration/operation limits. |
+| Configuration / exposure | Only `.env.example` is tracked, with blank secrets. Required JWT/DB values stay outside images; scaled Compose exposes only loopback NGINX. Local Redis/Kafka remain unauthenticated on the trusted internal network. |
+
+Invalid JSON/unknown DTO fields, invalid identifiers and validation failures keep
+generic 400 Problem Details. Domain/known unique conflicts remain 409. Database
+resource/timeout failures return 503; other integrity failures remain 500 without
+SQL or rows. `X-Request-ID` appears in application Problem Details and request MDC,
+which is cleared after each synchronous request. NGINX replaces incoming IDs.
+Direct clients may supply a 32-character lowercase hex diagnostic ID; it is not
+proof of origin or a unique transaction key. IDs are never metric tags.
+
+ECS logs retain timestamp, level, logger, exception type and safe summary, at the
+cost of losing stack details in normal console output. This protects known SQL
+throwable paths, not arbitrary secrets placed in future log messages. Do not log
+DTO bodies or enable wire/SQL debug. DLT records/diagnostic headers and database
+rows remain restricted operational data. The edge logs paths; never put secrets
+in URL paths.
+
+### Dependency review and unresolved advisories
+
+Resolved runtime versions were inspected on 2026-10-14. The initial advisory lookup
+was blocked by the proxy. After network access became available, OSV checked **110
+resolved Maven runtime artifacts** and returned **27 advisory matches affecting
+9 artifacts**. Details, queried versions, affected ranges and advisory links are
+retained in [dependency-audit.json](../verification/results/2026-10-14-phase12d-dependency-audit.json).
+These are confirmed affected-version matches, not 27 demonstrated application
+exploits. They were not suppressed or treated as a clean scan.
+
+| Artifact(s), current version | Matches | Source-based applicability / required follow-up |
+| --- | ---: | --- |
+| `at.yawk.lz4:lz4-java` 1.10.1 | 6 | Transitive Kafka codec. No direct application use of the flagged stream/XXHash APIs; Kafka/internal codec reachability is not fully ruled out. Container-private tmpfs reduces shared-temp exposure, not all codec risks. Highest listed fix: 1.11.4. |
+| `log4j-api` 2.24.3 | 1 | MapMessage JSON non-finite-number handling; application uses SLF4J/Logback ECS, with no MapMessage use found. Listed fix in the 2.25 line: 2.25.5. |
+| `netty-handler`, `netty-codec` 4.1.135.Final | 3 | SNI-server and Bzip2 decoder paths; this app uses Netty as a plaintext Redis client, not an SNI server/Bzip2 pipeline. Highest listed fix in 4.1: 4.1.137.Final. |
+| `jackson-databind` 2.21.4 | 9 | Flagged JsonView/Unwrapped/polymorphic identity, special JDK-type deserializers and type-ID caching are not used by request DTOs. No default typing is enabled. Future DTO/config changes could expose them. Highest listed fix in 2.21: 2.21.7. |
+| `jackson-core` 2.21.4 | 2 | DataInput parser error growth and numeric-pattern backtracking. HTTP uses bounded stream input, but complete transitive parsing reachability is not established. The 16 KiB guard limits input; it does not fix the library. Listed fix: 2.21.7. |
+| `tomcat-embed-core` 10.1.55 | 3 | Container DIGEST/FORM authentication and ordered Servlet security constraints. Tbooker uses Spring bearer security, disables form login and defines no container security constraints. Listed fix: 10.1.58. |
+| `spring-webmvc` 6.2.19 | 2 | SSE fragment rendering and XsltView; neither is present in this JSON API. Records list affected 6.2 through 6.2.19 and a fix in 7.0.9; do not infer a compatible 6.2 fix or blindly move to Framework 7. |
+| PostgreSQL JDBC 42.7.11 | 1 | TLS channel-binding downgrade when `channelBinding=require`. That mode is not configured in local Compose, which makes no TLS/channel-binding guarantee. Listed fix: 42.7.12. |
+
+The table summarizes all matches; consult the retained per-advisory ranges rather
+than treating a proposed version as an executed upgrade. Source absence is useful
+triage, not a proof that all transitive paths are unreachable. No exploit was
+demonstrated by this review and no dependency version was changed. Library
+remediation remains an explicit follow-up: select a supported Boot/BOM-compatible
+patch set, validate dependency convergence, rerun Maven and Docker recovery tests,
+and repeat the advisory lookup. These findings must be resolved or explicitly
+risk-assessed before public production deployment. Container OS/image layers,
+test/build dependencies and independent penetration testing were not scanned.
+
+### Remaining limitations and future priorities
+
+These missing controls and operational risks are distinct from a demonstrated
+exploit in the reviewed code:
+
+- Local HTTP has no TLS, brute-force/registration rate limit, hold quota or global
+  admission control. BCrypt is deliberately expensive; registration hashes while
+  holding a transaction/connection. Abuse can exhaust CPU/pools.
+- JWT logout/revocation, rotation, refreshed roles and disabled/deleted-user lookup
+  during authentication are absent. Service-layer user checks are not global
+  revocation; existing tokens remain valid until expiry.
+- Runtime and migrations share the DB bootstrap role. Separate least-privilege
+  roles, secret management, backups/restoration, broker ACLs/SASL/TLS and Redis
+  authentication remain production prerequisites.
+- Body bounds and idle timeouts do not prevent every slow-client/high-concurrency
+  denial of service. The filter supports blocking JSON; future multipart,
+  streaming or asynchronous request bodies require a separate review.
+- Unpaged responses, cache stampedes, one DB/broker/edge, finite Kafka retention,
+  historical table growth and absence of durable metric history/alerts remain.
+- Automated reconciliation/refunds, generic hold-create idempotency, durable cache
+  invalidation and HA failover are absent. A timeout does not prove a write failed.
+  Use existing payment/confirmation retry semantics after checking persisted state.
+
+These changes improve local safeguards and diagnosis; they do not establish
+production readiness. [RUNBOOK.md](RUNBOOK.md) covers operations and
+[TESTING.md](TESTING.md) records executed verification and its limits.

@@ -162,6 +162,7 @@ class Stack:
             try: body = json.loads(content)
             except ValueError: body = content
             return dict(status=response.status,body=body,upstream=response.headers.get('X-Tbooker-Upstream',''),
+                        correlation_id=response.headers.get('X-Request-ID',''),
                         seconds=time.monotonic()-start)
 
     def seat(self):
