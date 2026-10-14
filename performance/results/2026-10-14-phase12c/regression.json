@@ -1,0 +1,132 @@
+{
+  "command": "./mvnw clean verify --batch-mode --no-transfer-progress -s /workspace/.cache/maven/settings.xml -Dmaven.repo.local=/workspace/.cache/maven/repository",
+  "environment": "Java 21, SPRING_TEST_MOCKMVC_PRINT=NONE, TZ=UTC, real Docker Testcontainers",
+  "finished_utc": "2026-10-14T03:04:18Z",
+  "build_success": true,
+  "totals": {
+    "tests": 251,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "passed": 251
+  },
+  "suites": [
+    {
+      "suite": "com.example.Tbooker.BookingConcurrencyIntegrationTests",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 5.897,
+      "report_sha256": "7bf2d1c0119d2b51a9dda2cf03e47abaee8ab56d13182c1f361b3735f644281e"
+    },
+    {
+      "suite": "com.example.Tbooker.BookingEventsIntegrationTests",
+      "tests": 32,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 76.366,
+      "report_sha256": "5f498afdef45afbb6c8e1d2768b0943bdb4437c4e65a0901103656c4001c0ee6"
+    },
+    {
+      "suite": "com.example.Tbooker.BookingIntegrationTests",
+      "tests": 35,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 6.173,
+      "report_sha256": "392c4bbb333b3d071c40be487039d5229fb3d6c91eb7000d1e61c4554d8d2e0f"
+    },
+    {
+      "suite": "com.example.Tbooker.CatalogueCacheIntegrationTests",
+      "tests": 24,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 10.676,
+      "report_sha256": "f35b04aa8ca8a8e73e8a71ec8ed796d22a6ed5db620e571a72f0932aa7366fd1"
+    },
+    {
+      "suite": "com.example.Tbooker.MessagingRecoveryIntegrationTests",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 15.408,
+      "report_sha256": "7f3d1497cad18f315c3ae9dfec868511434fe8a4641bf28a1cf401daf64eae7d"
+    },
+    {
+      "suite": "com.example.Tbooker.PaymentIntegrationTests",
+      "tests": 35,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 8.653,
+      "report_sha256": "02ee2766aae2f7476acd4524cb4a91bc16aff7a9086241b45b26f19deb0d739d"
+    },
+    {
+      "suite": "com.example.Tbooker.ReservationCleanupIntegrationTests",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 6.163,
+      "report_sha256": "8b01bdd1a6d51b4f4556dabc7030f539202636f87d90d6ab71f89a561b560ea3"
+    },
+    {
+      "suite": "com.example.Tbooker.ReservationIntegrationTests",
+      "tests": 33,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 21.285,
+      "report_sha256": "eacaafa7e15a8bd2f2a95be67a5e196874c7d4d9d1ac39d294b5222e442353cf"
+    },
+    {
+      "suite": "com.example.Tbooker.SecurityIntegrationTests",
+      "tests": 42,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 11.553,
+      "report_sha256": "54d74be05325f9b7e12a7ada4836eb746e172dfbc974c4f255ceaca1aa9b33f2"
+    },
+    {
+      "suite": "com.example.Tbooker.ShowCatalogueIntegrationTests",
+      "tests": 31,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 4.936,
+      "report_sha256": "a417c1ab8f8cda1b4c14ad6ba78bee2c0ea16a3d0ebe2d57ea8af0277884e4fe"
+    },
+    {
+      "suite": "com.example.Tbooker.TbookerApplicationTests",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 6.478,
+      "report_sha256": "8d44aec9c3c18fbf5a303e363743a05931f041ea914969cac6ce50d73450c0de"
+    },
+    {
+      "suite": "com.example.Tbooker.config.JwtConfigurationTests",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.027,
+      "report_sha256": "ccb8e57917dc767850dc2d2d706cc24a0fb6ecdde1b947791d1ff06dc2a01cac"
+    },
+    {
+      "suite": "com.example.Tbooker.controller.HealthControllerTests",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.161,
+      "report_sha256": "ad75ce6189efa9338e2fb44f6727362f00d5bacdb36c0461ed330a0bc718f00e"
+    }
+  ]
+}

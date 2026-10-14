@@ -1,0 +1,13 @@
+{
+  "matrix_runs": 38,
+  "raw_streams_verified": 76,
+  "correctness_passed": 38,
+  "performance_targets_passed": 21,
+  "performance_targets_missed": 17,
+  "script_hashes_match": true,
+  "raw_http_counts_match_summaries": true,
+  "per_run_reports_match_aggregate": true,
+  "sampling_errors": 0,
+  "credential_pattern_scan": "No JWT, GitHub token or private-key patterns found in retained benchmark evidence; logs/temporary fixtures excluded from publication.",
+  "scope": "Evidence integrity checks, not additional JUnit test methods."
+}

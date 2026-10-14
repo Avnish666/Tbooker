@@ -136,6 +136,19 @@ contracts where stated. See `API.md` for the current contract.
   optional-service outages in disposable projects. See DEPLOYMENT.md and TESTING.md.
 - Preserve the host development workflow; no business feature or cloud deployment.
 
+## Phase 12C — Performance benchmarking and capacity analysis (verified)
+
+- Compare one/two JVMs with catalogue, uncached availability, hot-seat contention,
+  unique paid-booking traffic and Kafka pipeline workloads in disposable projects.
+- Declare latency/error/drop/event targets before increasing offered load; retain
+  all 38 runs, including 17 performance-target misses, rather than selecting winners.
+- Record HTTP distributions, SQL/cache counters, CPU/RAM/heap/GC, pool/lock pressure,
+  outbox/projection delay, consumer lag, and broker-pause recovery evidence.
+- Preserve Phase 9/11 evidence; publish raw metrics, charts, limitations and repeatable
+  commands. Confirm 251 Maven tests and post-load correctness in every trial.
+- Exact steady-state maximum capacity, longer soak tests, isolated profiling and
+  production tuning remain future measurements; no business logic was changed.
+
 ## Future — Catalogue administration and scheduling
 
 - Add validated write use cases for catalogues and venue layouts when requested.
@@ -164,10 +177,10 @@ contracts where stated. See `API.md` for the current contract.
 
 ## Future — Reliability and system design
 
-- Define traffic assumptions and capacity targets; measure the bottlenecks
-  identified in the current HLD before publishing capacity estimates.
-- Expand metrics, structured logs, tracing, load scenarios, and query/index tuning
-  beyond the Phase 9 cache counters and local catalogue benchmark.
+- Extend Phase 12C's local capacity evidence with stable warmup, finer rate searches,
+  longer repetitions, separate load-generator hosts and realistic production traffic.
+- Expand profiling, structured logs, tracing and query/index investigations using
+  the observed CPU, connection-queue, hot-row and event-processing pressure.
 - Use measured cache behavior to decide whether to add stampede control, a
   circuit breaker, durable invalidation, and TTL jitter.
 - Expand Kafka operations with lag/backlog alerts, retention/archiving policies,
@@ -181,8 +194,8 @@ contracts where stated. See `API.md` for the current contract.
 - Configure secrets, TLS, backups, restoration checks, and migration rollout.
 - Extend the local health probes and graceful shutdown configuration to production
   rollout procedures; verify shutdown during sustained traffic and add runbooks.
-- Publish reproducible performance evidence for the resume project, with
-  limitations documented.
+- Extend the published Phase 12C evidence as deployment targets and traffic
+  assumptions change, preserving earlier measurements and limitations.
 
-Advance one phase at a time. Phase 12B adds reproducible local deployment only; real
+Advance one phase at a time. Phase 12C adds performance evidence only; real
 providers, real email, refunds, and confirmed-booking cancellation remain future work.
