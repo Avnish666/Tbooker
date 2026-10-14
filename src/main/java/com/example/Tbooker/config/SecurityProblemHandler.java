@@ -3,6 +3,7 @@ package com.example.Tbooker.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
@@ -40,6 +41,7 @@ public class SecurityProblemHandler implements AuthenticationEntryPoint, AccessD
 	private void write(HttpServletRequest request, HttpServletResponse response,
 			HttpStatus status, String detail) throws IOException {
 		var problem = ProblemDetail.forStatusAndDetail(status, detail);
+		problem.setProperty("correlationId", MDC.get("correlationId"));
 		problem.setInstance(URI.create(request.getRequestURI()));
 		response.setStatus(status.value());
 		response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);

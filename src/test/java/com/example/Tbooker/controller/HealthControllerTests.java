@@ -3,6 +3,8 @@ package com.example.Tbooker.controller;
 import com.example.Tbooker.SecurityTestSupport;
 import com.example.Tbooker.config.SecurityConfig;
 import com.example.Tbooker.config.SecurityProblemHandler;
+import com.example.Tbooker.config.OperationalFailures;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,7 +20,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(HealthController.class)
-@Import({SecurityConfig.class, SecurityProblemHandler.class})
+@Import({SecurityConfig.class, SecurityProblemHandler.class, OperationalFailures.class, SimpleMeterRegistry.class})
 class HealthControllerTests extends SecurityTestSupport {
 
 	private final MockMvc mockMvc;

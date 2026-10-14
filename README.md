@@ -16,7 +16,9 @@ distributed concurrency, recovery, and performance verification. Phase 12A adds
 GitHub Actions CI; Phase 12B makes the full local Compose deployment reproducible
 from source, with pinned images and persistence/recovery checks. Phase 12C adds
 controlled catalogue, availability, contention, paid-traffic and Kafka capacity
-measurements with retained raw evidence. Later features are planned in
+measurements with retained raw evidence. Phase 12D adds request limits, correlated
+structured logs, bounded database waits, operational metrics and a recovery runbook.
+Later features are planned in
 [the roadmap](docs/ROADMAP.md).
 
 ## Stack
@@ -108,6 +110,7 @@ see [the deployment diagram and setup](docs/SCALING.md).
 | [LLD](docs/LLD.md) | Class and booking sequence diagrams, responsibilities, interfaces, and actual patterns. |
 | [Database](docs/DATABASE.md) | ER diagram, column dictionary, constraints, indexes, and migrations. |
 | [API](docs/API.md) | Routes, DTO fields, examples, validation, and errors. |
+| [Runbook](docs/RUNBOOK.md) | Health, metrics, logs, pool/lock diagnosis, outbox/consumer checks, and safe recovery. |
 | [Decisions](docs/DECISIONS.md) | Rationale, alternatives, and trade-offs. |
 | [Security](docs/SECURITY.md) | Authentication flow, filter chain, ownership, roles, setup, and limitations. |
 | [Booking](docs/BOOKING.md) | Detailed race-condition and transaction explanation. |
@@ -276,14 +279,29 @@ curl --fail http://localhost:8080/actuator/health/readiness
 available. It has no business logic or persistence access, so it does not need a
 pass-through service. Actuator readiness includes the database check;
 liveness does not depend on database availability. Overall health also includes
-Kafka; `/actuator/health/messaging` checks broker connectivity. Kafka failure does
-not fail booking readiness. Health is public with details hidden; metrics require
+Kafka and Redis; `/actuator/health/messaging` and `/actuator/health/cache` check
+them independently. Neither failure makes booking readiness fail. Health is public
+with details hidden; metrics require
 an ADMIN JWT.
 
 Security failures and Spring MVC errors use RFC 9457 Problem Details.
 Missing shows return centralized `404` Problem Details; invalid IDs return `400`.
 The application does not define a custom error contract for every unhandled
 server failure; see [API error behavior](docs/API.md#errors).
+
+Bodies are limited to 16 KiB at NGINX and the JVM, including chunked requests.
+Handled application errors carry a safe `correlationId`, matching `X-Request-ID` and ECS
+JSON logs. Expected hold conflicts are counted without stack traces. Metrics cover
+HTTP rates/statuses/local p95, JVM/GC, Hikari, reservation conflicts, payment
+failures, cache availability, outbox backlog/publish failures and consumer/DLT
+activity. Use [the runbook](docs/RUNBOOK.md) for exact names and commands; metrics
+are per instance, reset on restart, and have no durable history or alert stack.
+
+Pool acquisition, PostgreSQL locks and statements default to 3, 5 and 15 seconds.
+Configure `DB_POOL_TIMEOUT_MS`, `DB_LOCK_TIMEOUT` and `DB_STATEMENT_TIMEOUT` in both
+replicas. Limits apply to individual operations and startup migrations, not an
+end-to-end transaction deadline. Check persisted outcomes before retrying a 503 or
+timeout; no automatic write replay was added. See [security findings and limits](docs/SECURITY.md#phase-12d-review-verified-controls-and-confirmed-gaps).
 
 ## Development catalogue and API examples
 
@@ -490,6 +508,9 @@ all 20 transactions to contend at PostgreSQL. Migration checks call Flyway again
 and verify that migration history and application data remain unchanged.
 
 See [TESTING.md](docs/TESTING.md) for execution details and remaining weaknesses.
+Phase 12D passed **263 Maven tests, 14 distributed Docker checks, and 8 deployment
+checks**, with zero failures/errors/skips in the final runs. This includes all 251
+earlier Maven cases plus 12 new operational checks. See [the evidence and limitations](docs/TESTING.md#phase-12d-security-and-reliability-verification--2026-10-14).
 The Phase 12C full Maven rerun passed **251 tests: 0 failures, 0 errors, 0 skipped**.
 The following historical Phase 11 results retain their original scope:
 The final Phase 11 Maven rerun passed **251 tests: 0 failures, 0 errors, 0 skipped**.
@@ -613,12 +634,14 @@ operations need a later phase. Redis metadata caching and Kafka booking-event
 processing are implemented. Delivery work still includes
 production deployment/backup procedures. CI and reproducible local source-built
 Compose deployment are implemented through Phase 12B; Phase 12C adds measured
-capacity evidence and documented limits. See the [roadmap](docs/ROADMAP.md).
+capacity evidence and documented limits. Phase 12D adds operational safeguards and
+a runbook, not production certification. See the [roadmap](docs/ROADMAP.md).
 
 The legacy immediate-booking endpoint now returns `409`. A hold-creation retry
 also returns `409` for an allocated seat;
-reservation confirmation retries recover the same booking using the reservation ID. There is no booking-specific database lock or
-statement timeout, no past-show booking cutoff, and no scheduling overlap check.
+reservation confirmation retries recover the same booking using the reservation ID.
+Database waits are bounded, but there is no total transaction deadline, past-show
+booking cutoff or scheduling overlap check.
 Direct SQL can make seat status disagree with booking existence, although the
 supported service transaction maintains both atomically. JWTs currently have no
 refresh/revocation flow, role changes wait for token expiry, and auth endpoints

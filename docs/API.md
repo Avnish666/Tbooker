@@ -95,7 +95,8 @@ curl --fail http://localhost:8080/api/v1/health
 This endpoint confirms HTTP handling and does not query the database. Actuator
 also exposes `GET /actuator/health`, `/actuator/health/liveness`, and
 `/actuator/health/readiness`. Readiness includes the database health indicator;
-liveness does not. Optional Redis is excluded from health/readiness. Kafka has a
+liveness does not. Redis is excluded from readiness, but Phase 12D includes it in
+root health and exposes `/actuator/health/cache`. Kafka has a
 separate `/actuator/health/messaging` group and participates in overall health,
 but not booking readiness. Healthy responses return `200`; unhealthy health groups can
 return `503`. Component details are hidden. Metrics are additionally exposed to ADMIN JWTs only.
@@ -507,3 +508,22 @@ attempt per request. Do not assume a timeout means a write rolled back. Reuse th
 original payment idempotency key and reservation ID for supported recovery;
 hold creation has no general retry key. Metrics through NGINX may reach either
 replica; use authorized direct internal collection for per-instance counters.
+
+## Phase 12D request and failure boundaries
+
+- NGINX and the JVM reject bodies larger than 16384 bytes with 413, including
+  chunked bodies. Security runs before the JVM body guard, so unauthenticated
+  protected calls can return 401 before body validation. Edge 413 responses may
+  be HTML; application 413 responses are Problem Details.
+- Responses include `X-Request-ID`. NGINX overwrites incoming IDs; application
+  Problem Details additionally contain the same `correlationId`. This is a
+  diagnostic value, not an authentication credential or payment idempotency key.
+- Known reservation/payment conflicts keep 409. DB connection/resource/timeout
+  failures return generic 503; other database integrity failures remain 500.
+  Neither status proves a prior transaction did not commit. Read your reservation,
+  booking and payment, then use the original payment key/confirmation ID to retry.
+- `/actuator/health/cache` is public, detail-free, and returns 200/503 for Redis
+  availability. Root health includes optional Redis/Kafka; database-based booking
+  readiness stays independent of both. Metrics remain ADMIN-only.
+
+See [RUNBOOK.md](RUNBOOK.md) for metric names, time budgets and safe diagnostics.

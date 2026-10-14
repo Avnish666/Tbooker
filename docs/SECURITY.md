@@ -1,4 +1,4 @@
-# Authentication and authorization — Phases 6–11
+# Authentication, authorization and operational security
 
 The application authenticates local accounts with BCrypt and issues short-lived
 JWT bearer tokens. Spring Security protects booking routes and checks roles;
@@ -36,7 +36,8 @@ password hashes. Spring Security adds cache-control headers, including `no-store
 
 ```mermaid
 flowchart TD
-    Request[HTTP request] --> Chain[Spring SecurityFilterChain]
+    Request[HTTP request] --> Correlation[RequestCorrelationFilter]
+    Correlation --> Chain[Spring SecurityFilterChain]
     Chain --> Bearer[BearerTokenAuthenticationFilter]
     Bearer --> Present{Bearer token present?}
     Present -- Yes --> Decoder[NimbusJwtDecoder and validators]
@@ -45,7 +46,8 @@ flowchart TD
     Present -- No --> Anonymous[Anonymous request]
     Principal --> Rules[AuthorizationFilter and route rules]
     Anonymous --> Rules
-    Rules -- Allowed --> Controller[Controller and DTO validation]
+    Rules -- Allowed --> Limit[RequestBodyLimitFilter: 16 KiB]
+    Limit --> Controller[Controller and DTO validation]
     Rules -- Authentication missing --> Unauthorized
     Rules -- Insufficient role --> Forbidden[403 Problem Detail]
     Controller --> Service[Service and owner-scoped repository query]
@@ -280,3 +282,75 @@ host-facing bridge and publishes loopback HTTP. PostgreSQL/Redis/Kafka and backe
 ports remain unpublished. This does not replace TLS, Redis/broker authentication,
 or production firewall policy. Deliberately changing `LB_BIND_ADDRESS` can expose
 plaintext traffic outside the host. See [DEPLOYMENT.md](DEPLOYMENT.md).
+
+## Phase 12D review: verified controls and confirmed gaps
+
+The review started from `7423ae6`, the Phase 12C merge into main (PR #8).
+Existing password/JWT and owner predicates were retained, not replaced. No
+authentication bypass, cross-owner booking bypass or public payment-result write
+was found in this source review and regression tests; this is not exhaustive
+penetration testing.
+
+| Area | Finding and disposition |
+| --- | --- |
+| Authentication | BCrypt cost 12 and byte limit; HS256-only Nimbus signatures; required expiry/issued-at, issuer/audience, positive Long subject and USER/ADMIN role checks. Existing invalid/expired/tampered/incorrect-role tests retained. |
+| Authorization | Public exact catalogue routes; default deny; ADMIN-only metrics; owner-scoped reservation/payment/booking access even for ADMIN. Existing real-token tests cover these boundaries. |
+| Payment integrity | Owner/key uniqueness and command binding, independent provider verification, stale/duplicate version handling, and paid-only confirmation remain intact. No new callback or automatic retry. |
+| Confirmed request-size gap | NGINX already limited bodies, but direct JVM requests had no JSON-body bound. A post-security filter now buffers at most 16385 bytes and rejects over 16384 with 413, including chunked input before Jackson. This bounds body allocation, not request rate or total concurrent memory. |
+| Confirmed logging exposure | Application handlers logged raw DB throwables, which can contain failing-row data. They now emit class/category summaries. Hibernate's raw SQL-error logger is off; ECS output omits throwable message and stack fields, including library exceptions. A test injects a private row sentinel and checks response/logs. |
+| Confirmed log-volume gap | Cache outage warnings occurred for every cache operation. Warnings are now bounded per JVM while every failure is counted. Operational DB/payment/scheduler failures have per-operation limits. Framework/broker log volume still needs external retention controls. |
+| Confirmed wait-budget gap | Pool acquisition used its 30-second default and PostgreSQL had no explicit lock/statement limits. Defaults are now 3-second acquisition, 5-second lock and 15-second statement waits; see the runbook for migration/operation limits. |
+| Configuration / exposure | Only `.env.example` is tracked, with blank secrets. Required JWT/DB values stay outside images; scaled Compose exposes only loopback NGINX. Local Redis/Kafka remain unauthenticated on the trusted internal network. |
+
+Invalid JSON/unknown DTO fields, invalid identifiers and validation failures keep
+generic 400 Problem Details. Domain/known unique conflicts remain 409. Database
+resource/timeout failures return 503; other integrity failures remain 500 without
+SQL or rows. `X-Request-ID` appears in application Problem Details and request MDC,
+which is cleared after each synchronous request. NGINX replaces incoming IDs.
+Direct clients may supply a 32-character lowercase hex diagnostic ID; it is not
+proof of origin or a unique transaction key. IDs are never metric tags.
+
+ECS logs retain timestamp, level, logger, exception type and safe summary, at the
+cost of losing stack details in normal console output. This protects known SQL
+throwable paths, not arbitrary secrets placed in future log messages. Do not log
+DTO bodies or enable wire/SQL debug. DLT records/diagnostic headers and database
+rows remain restricted operational data. The edge logs paths; never put secrets
+in URL paths.
+
+### Dependency review limits
+
+Resolved runtime versions were inspected on 2026-10-14: Boot 3.5.16, Spring Security
+6.5.11, Framework 6.2.19, Tomcat 10.1.55, Nimbus 10.10, Logback 1.5.34,
+PostgreSQL JDBC 42.7.11, Kafka client 3.9.2 and Netty 4.1.135.Final. The OSV Maven
+advisory lookup was blocked by the environment proxy (`403 Forbidden`). No
+successful advisory or container-image vulnerability scan is claimed; no CVE was
+confirmed or dismissed on that evidence. Repeat current SCA and image scans in an
+allowed environment, triage reachable advisories, then update managed versions
+and pins with regression tests. No speculative dependency upgrade was made.
+
+### Remaining limitations and future priorities
+
+These missing controls and operational risks are distinct from a demonstrated
+exploit in the reviewed code:
+
+- Local HTTP has no TLS, brute-force/registration rate limit, hold quota or global
+  admission control. BCrypt is deliberately expensive; registration hashes while
+  holding a transaction/connection. Abuse can exhaust CPU/pools.
+- JWT logout/revocation, rotation, refreshed roles and disabled/deleted-user lookup
+  during authentication are absent. Service-layer user checks are not global
+  revocation; existing tokens remain valid until expiry.
+- Runtime and migrations share the DB bootstrap role. Separate least-privilege
+  roles, secret management, backups/restoration, broker ACLs/SASL/TLS and Redis
+  authentication remain production prerequisites.
+- Body bounds and idle timeouts do not prevent every slow-client/high-concurrency
+  denial of service. The filter supports blocking JSON; future multipart,
+  streaming or asynchronous request bodies require a separate review.
+- Unpaged responses, cache stampedes, one DB/broker/edge, finite Kafka retention,
+  historical table growth and absence of durable metric history/alerts remain.
+- Automated reconciliation/refunds, generic hold-create idempotency, durable cache
+  invalidation and HA failover are absent. A timeout does not prove a write failed.
+  Use existing payment/confirmation retry semantics after checking persisted state.
+
+These changes improve local safeguards and diagnosis; they do not establish
+production readiness. [RUNBOOK.md](RUNBOOK.md) covers operations and
+[TESTING.md](TESTING.md) records executed verification and its limits.

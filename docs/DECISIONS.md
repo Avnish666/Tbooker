@@ -541,3 +541,46 @@ compilation and is not itself a test result. Local volumes are not backups;
 Compose restart policies do not heal an unhealthy-but-running process. The setup
 remains single-host plaintext with one database/broker/proxy, not production HA.
 See [DEPLOYMENT.md](DEPLOYMENT.md) for the operational contract and verification.
+
+## Phase 12D — Bound resource use and make failures diagnosable
+
+**Decision:** Keep Spring's JWT resource-server chain and owner predicates. Add
+request correlation before security and a 16 KiB body filter after authorization,
+before MVC/Jackson. NGINX overwrites the same request ID. Unknown-length bodies
+receive the same limit as declared-length bodies. Filters handle transport
+concerns without a custom authentication mechanism or new business endpoint.
+
+**Trade-off:** Bounded buffering serves the current blocking JSON API, not a future
+streaming-upload API. It is not a rate limiter or total-memory admission policy.
+Correlation is not trusted identity, idempotency or a distributed trace.
+
+**Decision:** Use Boot ECS JSON, sanitized summaries and fixed-cardinality counters.
+Exclude throwable message/stack fields and disable Hibernate raw SQL-error logs
+because PostgreSQL may include failed-row data. Limit application warnings per
+JVM/category for 30 seconds while counting every failure. Conflicts are metrics.
+
+**Trade-off:** Normal console logs have less debugging detail. Operators use types,
+correlation, metrics and persisted state, and must still protect infrastructure
+logs and DLT diagnostics. This is not general-purpose secret detection/redaction.
+
+**Decision:** Bound Hikari acquisition (3 s), PostgreSQL locks (5 s), statements
+(15 s), JDBC connect/socket/cancel waits (3/20/2 s). Return generic 503 for DB
+resource/transient failures, preserve 409 for known business/unique conflicts and
+500 for other integrity errors. No automatic write retries or NGINX replay.
+
+**Trade-off:** Limits apply per operation, not per HTTP transaction. Several
+statements can exceed the NGINX 20-second idle timeout; a network failure can
+follow a commit. Shorter waits may reject work under overload. Flyway uses the
+same pool, so large migrations require reviewed startup limits with quiesced
+writers and a verified backup. Phase 12C throughput was not remeasured under these
+new defaults and must not be presented as a new capacity result.
+
+**Decision:** Reuse Actuator/Micrometer for local p95, status counts, JVM/GC/pool,
+conflicts, payment outcomes, cache errors, outbox and consumer metrics. Redis health
+is a separate group; readiness stays DB-only. Native fetch lag is supplemented by
+broker group-offset commands, without a new monitoring stack.
+
+**Trade-off:** Percentiles cannot be averaged across instances. Counters reset,
+sampled backlog can be stale and there is no durable history/alert service. Root
+health includes optional services and can be DOWN while booking readiness is UP.
+Query individual replicas and persisted state before inferring a payment outcome.

@@ -246,7 +246,7 @@ multi-node throughput or clock failover is made.
 | --- | --- |
 | A popular seat | Updates serialize on its row. More application instances cannot make that seat accept multiple bookings. |
 | Connection and HTTP worker pools | Waiting requests consume resources. Production pool sizing has not been tuned; the concurrency test's 24-connection pool is test-only. |
-| Long database transactions | No booking-specific lock or statement timeout is configured. A connection-acquisition timeout does not bound an active SQL wait. |
+| Long database transactions | Phase 12D bounds pool acquisition (3 s), each lock wait (5 s) and statement (15 s). Multiple operations can still exceed an HTTP deadline; network failure can leave an ambiguous commit. |
 | Unpaged catalogue reads | Result size, DTO allocation, serialization, and sorting grow with the catalogue. Existing indexes do not eliminate every join or sort. |
 | Booking lookups | Resource checks add database round trips before the update and insert. No latency claim is made. |
 | Registration and login | BCrypt costs CPU; registration holds a database transaction during hashing. Rate limiting and production sizing are not implemented. |
@@ -460,3 +460,20 @@ upgrades require a quiesced-writer/backup plan, not an assumed rolling upgrade.
 See [DEPLOYMENT.md](DEPLOYMENT.md) for configuration, restart/recovery, and limits.
 CI verifies Java tests separately; a successful image build alone is not a test
 result or production deployment. No new domain service or transaction is added.
+
+## Phase 12D operational boundaries
+
+NGINX and the synchronous application both enforce a 16 KiB body limit. The edge
+overwrites request IDs; a pre-security filter scopes MDC and response correlation,
+while a post-security filter bounds bodies before Jackson. Booking/payment identity
+still comes exclusively from the JWT. No allocation transaction changes or retries
+were introduced. PostgreSQL operation budgets limit pool/lock/statement pressure;
+they do not guarantee an end-to-end deadline or resolve ambiguous commits.
+
+Actuator exposes per-instance HTTP p95/status counts, JVM/pool metrics and bounded
+domain failure counters. Redis health is separate from database readiness, as Kafka
+health already was. ECS application logs and JSON edge logs omit bodies and tokens;
+operational warning throttles retain all counts. There is no external telemetry
+store, alert deployment or distributed tracing system. See [RUNBOOK.md](RUNBOOK.md)
+for metrics, broker lag checks and state-based recovery, and [SECURITY.md](SECURITY.md)
+for verified controls versus remaining production risks.

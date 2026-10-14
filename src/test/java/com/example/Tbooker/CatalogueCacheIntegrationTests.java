@@ -230,12 +230,17 @@ class CatalogueCacheIntegrationTests extends SecurityTestSupport {
 
     @Test
     void unavailableRedisFallsBackAndDoesNotFailDatabaseReadiness() throws Exception {
+        mvc.perform(get("/actuator/health/cache")).andExpect(status().isOk());
         pause();
         try {
             mvc.perform(get("/api/shows/{id}", showId)).andExpect(status().isOk());
             mvc.perform(get("/actuator/health/readiness")).andExpect(status().isOk());
             assertThat(statistics.getPrepareStatementCount()).isEqualTo(1);
+            mvc.perform(get("/actuator/health/cache")).andExpect(status().isServiceUnavailable())
+                    .andExpect(jsonPath("$.status").value("DOWN"))
+                    .andExpect(jsonPath("$.components").doesNotExist());
         } finally { resume(); }
+        mvc.perform(get("/actuator/health/cache")).andExpect(status().isOk());
     }
 
     @Test

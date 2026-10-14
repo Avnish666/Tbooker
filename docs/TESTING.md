@@ -189,9 +189,9 @@ penetration test, throughput benchmark, or failover certification.
 
 ## Remaining weaknesses and limits
 
-- The repository does not configure a database lock timeout or statement timeout
-  for booking. A long-running competing transaction can make requests wait; the
-  connection-acquisition timeout does not bound an already-running SQL update.
+- Phase 12D now bounds pool acquisition and PostgreSQL lock/statement waits.
+  Multiple statements and network failures still require explicit outcome recovery;
+  these budgets are not a whole-request deadline. See [RUNBOOK.md](RUNBOOK.md).
 - Hold-creation retries have no recovery key. Payment initiation is owner/key
   idempotent and reservation confirmation recovers the original booking.
 - Foreign keys and uniqueness prevent duplicate/dangling bookings, but direct SQL
@@ -709,3 +709,63 @@ was corrected to follow `reservations.confirmed_payment_id`. The second pilot
 passed. Neither pilot is included in the 38-run comparison. Final script hashes
 are retained with the report, and the final analysis validates fault execution,
 raw dropped-iteration counts and the complete matrix. The application was unchanged.
+
+## Phase 12D security and reliability verification — 2026-10-14
+
+The feature branch starts from Phase 12C merge `7423ae6`. Java 21, Docker,
+PostgreSQL/Redis/Kafka Testcontainers and two real JVMs behind NGINX were available.
+The final Maven wrapper `clean verify` finished at `2026-10-14T08:38:41Z`.
+
+| Verification | Passed | Failed | Errors | Skipped | Evidence |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Full Maven regression, 15 suites | 263 | 0 | 0 | 0 | [Maven totals and XML hashes](../verification/results/2026-10-14-phase12d-maven.json) |
+| Distributed Compose suite | 14 | 0 | 0 | 0 | [Two-JVM results](../verification/results/2026-10-14-phase12d-multi-instance.json) |
+| Deployment/persistence/recovery | 8 | 0 | 0 | 0 | [Deployment results](../verification/results/2026-10-14-phase12d-deployment.json) |
+
+The Docker runners retain their original `phase: 11` / `phase: 12B` labels;
+these dated files are new executions against Phase 12D, not reused old results.
+Image builds packaged current source with the pinned multi-stage Dockerfile and
+warm dependency cache. Maven ran separately; Docker packaging is not another test
+suite. Cloud Maven settings/cache overrides are recorded in the Maven evidence.
+
+The 251 existing Maven cases remain. Twelve added cases cover real HTTP known-size
+and chunked oversized bodies, malformed JSON without credential echo, correlation
+across 401/403, reservation-conflict and p95 meters, PostgreSQL lock timeout and
+retry, statement-timeout rollback, pool exhaustion/recovery, private failing-row
+log/response sanitization, warning throttling/count preservation and MDC cleanup.
+Existing Redis outage coverage now also asserts cache health DOWN then UP while
+database readiness remains UP. The root-health fixture now starts a real Redis
+container because root health intentionally includes its availability.
+
+Distributed checks verified edge ID replacement, matching security Problem
+Details/JSON access logs, edge 413 and per-instance p95/JVM/GC/pool metrics. All
+100 reservation requests reached actual PostgreSQL locks (50 per JVM): one 201,
+ninety-nine 409s, one booking, and 20 repeat confirmations returning that booking.
+Expiry/cancel races, duplicate payments, Redis/Kafka failures, backend SIGKILL,
+no proxy write replay, publisher death after broker ack, consumer membership and
+projection deduplication passed. Two distinct consumer groups each assigned all
+three partitions across both JVMs.
+
+The deployment suite exercised clean volumes, Flyway repeatability, real JWT
+login/ownership, paid booking, both-app/one-app restart, PostgreSQL restart,
+Redis/Kafka outage with backend restart and full container recreation on retained
+volumes. Bookings and migration history survived, same-key payment retry returned
+the same result, and private stack credentials/JWT were absent from logs. All
+stacks used generated credentials, fresh runner-owned projects and disposable
+volumes; no developer data was removed.
+
+Earlier development attempts are not counted as passing: a test-only compile
+error used `SimpleMeterRegistry` as AutoCloseable and was corrected. The first
+complete regression ran 263 tests with 262 passing and one failure: its old
+root-health fixture omitted Redis. Adding the actual dependency fixed the fixture;
+the final full rerun passed all 263 without disabling an assertion. The focused
+38-case run also passed before the final regression.
+
+`git diff --check`, changed-document local links and verification Python syntax
+passed. A basic repository pattern scan found no private keys, compact JWTs,
+GitHub tokens or AWS access keys; `.env` remains ignored and example secrets blank.
+This is not an exhaustive secret scan. Resolved dependency versions were reviewed,
+but the OSV advisory API was blocked by the cloud network proxy (403); no SCA or
+container vulnerability-clean claim is made. GitHub Actions, production TLS/HA,
+load capacity under the new timeouts, backup restoration, multi-host partitions
+and real payment recovery were not verified by these checks.
