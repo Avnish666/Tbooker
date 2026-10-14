@@ -1,0 +1,388 @@
+{
+  "runs": {
+    "catalogue-r200-n1-s1": {
+      "start": "2026-10-14T03:17:09.895350+00:00",
+      "end": "2026-10-14T03:17:40.778689+00:00",
+      "errors": [],
+      "count": 0
+    },
+    "catalogue-r200-n2-s2": {
+      "start": "2026-10-14T03:18:27.702186+00:00",
+      "end": "2026-10-14T03:18:58.865326+00:00",
+      "errors": [],
+      "count": 0
+    },
+    "catalogue-r600-n1-s1": {
+      "start": "2026-10-14T03:19:42.177924+00:00",
+      "end": "2026-10-14T03:20:15.183224+00:00",
+      "errors": [],
+      "count": 0
+    },
+    "catalogue-r600-n2-s2": {
+      "start": "2026-10-14T03:21:04.614719+00:00",
+      "end": "2026-10-14T03:21:36.093490+00:00",
+      "errors": [],
+      "count": 0
+    },
+    "catalogue-r600-n2-s3": {
+      "start": "2026-10-14T03:22:16.606861+00:00",
+      "end": "2026-10-14T03:22:49.352318+00:00",
+      "errors": [],
+      "count": 0
+    },
+    "catalogue-r600-n1-s4": {
+      "start": "2026-10-14T03:23:32.101006+00:00",
+      "end": "2026-10-14T03:24:03.216014+00:00",
+      "errors": [
+        {
+          "instance": "app-a",
+          "cache": "movie",
+          "operation": "get",
+          "error": "QueryTimeoutException",
+          "count": 1
+        },
+        {
+          "instance": "app-a",
+          "cache": "movies",
+          "operation": "get",
+          "error": "QueryTimeoutException",
+          "count": 1
+        },
+        {
+          "instance": "app-a",
+          "cache": "show",
+          "operation": "get",
+          "error": "QueryTimeoutException",
+          "count": 1
+        },
+        {
+          "instance": "app-a",
+          "cache": "shows",
+          "operation": "get",
+          "error": "QueryTimeoutException",
+          "count": 1
+        },
+        {
+          "instance": "app-a",
+          "cache": "theatre",
+          "operation": "get",
+          "error": "QueryTimeoutException",
+          "count": 1
+        }
+      ],
+      "count": 5
+    },
+    "catalogue-r1200-n1-s1": {
+      "start": "2026-10-14T03:24:46.794051+00:00",
+      "end": "2026-10-14T03:25:20.738637+00:00",
+      "errors": [
+        {
+          "instance": "app-a",
+          "cache": "movie",
+          "operation": "get",
+          "error": "QueryTimeoutException",
+          "count": 130
+        },
+        {
+          "instance": "app-a",
+          "cache": "movie",
+          "operation": "put",
+          "error": "QueryTimeoutException",
+          "count": 46
+        },
+        {
+          "instance": "app-a",
+          "cache": "movies",
+          "operation": "get",
+          "error": "QueryTimeoutException",
+          "count": 117
+        },
+        {
+          "instance": "app-a",
+          "cache": "movies",
+          "operation": "put",
+          "error": "QueryTimeoutException",
+          "count": 53
+        },
+        {
+          "instance": "app-a",
+          "cache": "show",
+          "operation": "get",
+          "error": "QueryTimeoutException",
+          "count": 130
+        },
+        {
+          "instance": "app-a",
+          "cache": "show",
+          "operation": "put",
+          "error": "QueryTimeoutException",
+          "count": 51
+        },
+        {
+          "instance": "app-a",
+          "cache": "shows",
+          "operation": "get",
+          "error": "QueryTimeoutException",
+          "count": 132
+        },
+        {
+          "instance": "app-a",
+          "cache": "shows",
+          "operation": "put",
+          "error": "QueryTimeoutException",
+          "count": 45
+        },
+        {
+          "instance": "app-a",
+          "cache": "theatre",
+          "operation": "get",
+          "error": "QueryTimeoutException",
+          "count": 121
+        },
+        {
+          "instance": "app-a",
+          "cache": "theatre",
+          "operation": "put",
+          "error": "QueryTimeoutException",
+          "count": 50
+        },
+        {
+          "instance": "app-a",
+          "cache": "theatres",
+          "operation": "get",
+          "error": "QueryTimeoutException",
+          "count": 126
+        },
+        {
+          "instance": "app-a",
+          "cache": "theatres",
+          "operation": "put",
+          "error": "QueryTimeoutException",
+          "count": 48
+        }
+      ],
+      "count": 1049
+    },
+    "catalogue-r1200-n2-s2": {
+      "start": "2026-10-14T03:26:08.139393+00:00",
+      "end": "2026-10-14T03:26:39.648942+00:00",
+      "errors": [
+        {
+          "instance": "app-b",
+          "cache": "movie",
+          "operation": "get",
+          "error": "QueryTimeoutException",
+          "count": 155
+        },
+        {
+          "instance": "app-b",
+          "cache": "movie",
+          "operation": "put",
+          "error": "QueryTimeoutException",
+          "count": 82
+        },
+        {
+          "instance": "app-b",
+          "cache": "movies",
+          "operation": "get",
+          "error": "QueryTimeoutException",
+          "count": 707
+        },
+        {
+          "instance": "app-b",
+          "cache": "movies",
+          "operation": "put",
+          "error": "QueryTimeoutException",
+          "count": 323
+        },
+        {
+          "instance": "app-b",
+          "cache": "show",
+          "operation": "get",
+          "error": "QueryTimeoutException",
+          "count": 136
+        },
+        {
+          "instance": "app-b",
+          "cache": "show",
+          "operation": "put",
+          "error": "QueryTimeoutException",
+          "count": 54
+        },
+        {
+          "instance": "app-b",
+          "cache": "shows",
+          "operation": "get",
+          "error": "QueryTimeoutException",
+          "count": 785
+        },
+        {
+          "instance": "app-b",
+          "cache": "shows",
+          "operation": "put",
+          "error": "QueryTimeoutException",
+          "count": 369
+        },
+        {
+          "instance": "app-b",
+          "cache": "theatre",
+          "operation": "get",
+          "error": "QueryTimeoutException",
+          "count": 135
+        },
+        {
+          "instance": "app-b",
+          "cache": "theatre",
+          "operation": "put",
+          "error": "QueryTimeoutException",
+          "count": 70
+        },
+        {
+          "instance": "app-b",
+          "cache": "theatres",
+          "operation": "get",
+          "error": "QueryTimeoutException",
+          "count": 726
+        },
+        {
+          "instance": "app-b",
+          "cache": "theatres",
+          "operation": "put",
+          "error": "QueryTimeoutException",
+          "count": 354
+        }
+      ],
+      "count": 3896
+    },
+    "availability-r50-n1-s1": {
+      "start": "2026-10-14T03:27:21.122471+00:00",
+      "end": "2026-10-14T03:27:53.919789+00:00",
+      "errors": [],
+      "count": 0
+    },
+    "availability-r50-n2-s2": {
+      "start": "2026-10-14T03:28:35.360772+00:00",
+      "end": "2026-10-14T03:29:06.318633+00:00",
+      "errors": [],
+      "count": 0
+    },
+    "availability-r150-n1-s1": {
+      "start": "2026-10-14T03:29:49.838381+00:00",
+      "end": "2026-10-14T03:30:22.783446+00:00",
+      "errors": [],
+      "count": 0
+    },
+    "availability-r150-n2-s2": {
+      "start": "2026-10-14T03:31:04.327321+00:00",
+      "end": "2026-10-14T03:31:35.751897+00:00",
+      "errors": [],
+      "count": 0
+    },
+    "availability-r150-n2-s3": {
+      "start": "2026-10-14T03:32:21.644185+00:00",
+      "end": "2026-10-14T03:32:53.084053+00:00",
+      "errors": [],
+      "count": 0
+    },
+    "availability-r150-n1-s4": {
+      "start": "2026-10-14T03:33:38.136569+00:00",
+      "end": "2026-10-14T03:34:09.093521+00:00",
+      "errors": [],
+      "count": 0
+    },
+    "availability-r400-n1-s1": {
+      "start": "2026-10-14T03:34:55.793348+00:00",
+      "end": "2026-10-14T03:35:28.355908+00:00",
+      "errors": [],
+      "count": 0
+    },
+    "availability-r400-n2-s2": {
+      "start": "2026-10-14T03:36:13.604233+00:00",
+      "end": "2026-10-14T03:36:44.503079+00:00",
+      "errors": [],
+      "count": 0
+    },
+    "mixed-r5-n1-s1": {
+      "start": "2026-10-14T03:37:30.779774+00:00",
+      "end": "2026-10-14T03:38:01.664153+00:00",
+      "errors": [],
+      "count": 0
+    },
+    "mixed-r5-n2-s2": {
+      "start": "2026-10-14T03:38:49.669086+00:00",
+      "end": "2026-10-14T03:39:20.650960+00:00",
+      "errors": [],
+      "count": 0
+    },
+    "mixed-r15-n1-s1": {
+      "start": "2026-10-14T03:40:03.859374+00:00",
+      "end": "2026-10-14T03:40:38.114047+00:00",
+      "errors": [
+        {
+          "instance": "app-a",
+          "cache": "movie",
+          "operation": "get",
+          "error": "QueryTimeoutException",
+          "count": 4
+        },
+        {
+          "instance": "app-a",
+          "cache": "movies",
+          "operation": "get",
+          "error": "QueryTimeoutException",
+          "count": 3
+        },
+        {
+          "instance": "app-a",
+          "cache": "show",
+          "operation": "get",
+          "error": "QueryTimeoutException",
+          "count": 2
+        },
+        {
+          "instance": "app-a",
+          "cache": "shows",
+          "operation": "get",
+          "error": "QueryTimeoutException",
+          "count": 4
+        },
+        {
+          "instance": "app-a",
+          "cache": "theatre",
+          "operation": "get",
+          "error": "QueryTimeoutException",
+          "count": 4
+        },
+        {
+          "instance": "app-a",
+          "cache": "theatres",
+          "operation": "get",
+          "error": "QueryTimeoutException",
+          "count": 3
+        },
+        {
+          "instance": "app-a",
+          "cache": "theatres",
+          "operation": "put",
+          "error": "QueryTimeoutException",
+          "count": 1
+        }
+      ],
+      "count": 21
+    },
+    "mixed-r15-n2-s2": {
+      "start": "2026-10-14T03:41:29.479597+00:00",
+      "end": "2026-10-14T03:42:01.704174+00:00",
+      "errors": [],
+      "count": 0
+    },
+    "mixed-r15-n2-s3": {
+      "start": "2026-10-14T03:42:50.324658+00:00",
+      "end": "2026-10-14T03:43:22.058563+00:00",
+      "errors": [],
+      "count": 0
+    }
+  },
+  "source": "Docker CatalogueCacheErrors warning counts; only measured observation windows included",
+  "observed_utc": "2026-10-14T03:44:08.092796+00:00"
+}

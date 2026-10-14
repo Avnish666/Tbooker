@@ -1,0 +1,4261 @@
+{
+  "job": {
+    "id": "availability-r50-n2-s2",
+    "workload": "availability",
+    "rate": 50,
+    "replicas": 2
+  },
+  "before": {
+    "jvm": {
+      "app-a": {
+        "jvm.memory.used?tag=area:heap": {
+          "name": "jvm.memory.used",
+          "description": "The amount of used memory",
+          "baseUnit": "bytes",
+          "measurements": [
+            {
+              "statistic": "VALUE",
+              "value": 76719912.0
+            }
+          ],
+          "availableTags": [
+            {
+              "tag": "instance",
+              "values": [
+                "app-a"
+              ]
+            },
+            {
+              "tag": "application",
+              "values": [
+                "tbooker"
+              ]
+            },
+            {
+              "tag": "id",
+              "values": [
+                "Survivor Space",
+                "Eden Space",
+                "Tenured Gen"
+              ]
+            }
+          ]
+        },
+        "jvm.gc.pause": {
+          "name": "jvm.gc.pause",
+          "description": "Time spent in GC pause",
+          "baseUnit": "seconds",
+          "measurements": [
+            {
+              "statistic": "COUNT",
+              "value": 10.0
+            },
+            {
+              "statistic": "TOTAL_TIME",
+              "value": 0.235
+            },
+            {
+              "statistic": "MAX",
+              "value": 0.144
+            }
+          ],
+          "availableTags": [
+            {
+              "tag": "instance",
+              "values": [
+                "app-a"
+              ]
+            },
+            {
+              "tag": "application",
+              "values": [
+                "tbooker"
+              ]
+            },
+            {
+              "tag": "cause",
+              "values": [
+                "Metadata GC Threshold",
+                "Allocation Failure"
+              ]
+            },
+            {
+              "tag": "action",
+              "values": [
+                "end of minor GC",
+                "end of major GC"
+              ]
+            },
+            {
+              "tag": "gc",
+              "values": [
+                "Copy",
+                "MarkSweepCompact"
+              ]
+            }
+          ]
+        },
+        "hikaricp.connections": {
+          "name": "hikaricp.connections",
+          "description": "Total connections",
+          "measurements": [
+            {
+              "statistic": "VALUE",
+              "value": 5.0
+            }
+          ],
+          "availableTags": [
+            {
+              "tag": "instance",
+              "values": [
+                "app-a"
+              ]
+            },
+            {
+              "tag": "application",
+              "values": [
+                "tbooker"
+              ]
+            },
+            {
+              "tag": "pool",
+              "values": [
+                "app-a"
+              ]
+            }
+          ]
+        },
+        "hikaricp.connections.active": {
+          "name": "hikaricp.connections.active",
+          "description": "Active connections",
+          "measurements": [
+            {
+              "statistic": "VALUE",
+              "value": 0.0
+            }
+          ],
+          "availableTags": [
+            {
+              "tag": "instance",
+              "values": [
+                "app-a"
+              ]
+            },
+            {
+              "tag": "application",
+              "values": [
+                "tbooker"
+              ]
+            },
+            {
+              "tag": "pool",
+              "values": [
+                "app-a"
+              ]
+            }
+          ]
+        },
+        "hikaricp.connections.pending": {
+          "name": "hikaricp.connections.pending",
+          "description": "Pending threads",
+          "measurements": [
+            {
+              "statistic": "VALUE",
+              "value": 0.0
+            }
+          ],
+          "availableTags": [
+            {
+              "tag": "instance",
+              "values": [
+                "app-a"
+              ]
+            },
+            {
+              "tag": "application",
+              "values": [
+                "tbooker"
+              ]
+            },
+            {
+              "tag": "pool",
+              "values": [
+                "app-a"
+              ]
+            }
+          ]
+        },
+        "kafka.consumer.fetch.manager.records.lag.max": {
+          "name": "kafka.consumer.fetch.manager.records.lag.max",
+          "description": "The maximum lag in terms of number of records for any partition in this window. NOTE: This is based on current offset and not committed offset",
+          "measurements": [
+            {
+              "statistic": "VALUE",
+              "value": 0.0
+            }
+          ],
+          "availableTags": [
+            {
+              "tag": "instance",
+              "values": [
+                "app-a"
+              ]
+            },
+            {
+              "tag": "application",
+              "values": [
+                "tbooker"
+              ]
+            },
+            {
+              "tag": "spring.id",
+              "values": [
+                "kafkaConsumerFactory.consumer-tbooker-analytics-v1-1",
+                "kafkaConsumerFactory.consumer-tbooker-notifications-v1-2"
+              ]
+            },
+            {
+              "tag": "kafka.version",
+              "values": [
+                "3.9.2"
+              ]
+            },
+            {
+              "tag": "client.id",
+              "values": [
+                "consumer-tbooker-analytics-v1-1",
+                "consumer-tbooker-notifications-v1-2"
+              ]
+            }
+          ]
+        },
+        "booking.outbox.publish.delay": {
+          "unavailable": true
+        }
+      },
+      "app-b": {
+        "jvm.memory.used?tag=area:heap": {
+          "name": "jvm.memory.used",
+          "description": "The amount of used memory",
+          "baseUnit": "bytes",
+          "measurements": [
+            {
+              "statistic": "VALUE",
+              "value": 72213856.0
+            }
+          ],
+          "availableTags": [
+            {
+              "tag": "instance",
+              "values": [
+                "app-b"
+              ]
+            },
+            {
+              "tag": "application",
+              "values": [
+                "tbooker"
+              ]
+            },
+            {
+              "tag": "id",
+              "values": [
+                "Survivor Space",
+                "Eden Space",
+                "Tenured Gen"
+              ]
+            }
+          ]
+        },
+        "jvm.gc.pause": {
+          "name": "jvm.gc.pause",
+          "description": "Time spent in GC pause",
+          "baseUnit": "seconds",
+          "measurements": [
+            {
+              "statistic": "COUNT",
+              "value": 8.0
+            },
+            {
+              "statistic": "TOTAL_TIME",
+              "value": 0.223
+            },
+            {
+              "statistic": "MAX",
+              "value": 0.157
+            }
+          ],
+          "availableTags": [
+            {
+              "tag": "instance",
+              "values": [
+                "app-b"
+              ]
+            },
+            {
+              "tag": "application",
+              "values": [
+                "tbooker"
+              ]
+            },
+            {
+              "tag": "cause",
+              "values": [
+                "Metadata GC Threshold",
+                "Allocation Failure"
+              ]
+            },
+            {
+              "tag": "action",
+              "values": [
+                "end of minor GC",
+                "end of major GC"
+              ]
+            },
+            {
+              "tag": "gc",
+              "values": [
+                "Copy",
+                "MarkSweepCompact"
+              ]
+            }
+          ]
+        },
+        "hikaricp.connections": {
+          "name": "hikaricp.connections",
+          "description": "Total connections",
+          "measurements": [
+            {
+              "statistic": "VALUE",
+              "value": 8.0
+            }
+          ],
+          "availableTags": [
+            {
+              "tag": "instance",
+              "values": [
+                "app-b"
+              ]
+            },
+            {
+              "tag": "application",
+              "values": [
+                "tbooker"
+              ]
+            },
+            {
+              "tag": "pool",
+              "values": [
+                "app-b"
+              ]
+            }
+          ]
+        },
+        "hikaricp.connections.active": {
+          "name": "hikaricp.connections.active",
+          "description": "Active connections",
+          "measurements": [
+            {
+              "statistic": "VALUE",
+              "value": 0.0
+            }
+          ],
+          "availableTags": [
+            {
+              "tag": "instance",
+              "values": [
+                "app-b"
+              ]
+            },
+            {
+              "tag": "application",
+              "values": [
+                "tbooker"
+              ]
+            },
+            {
+              "tag": "pool",
+              "values": [
+                "app-b"
+              ]
+            }
+          ]
+        },
+        "hikaricp.connections.pending": {
+          "name": "hikaricp.connections.pending",
+          "description": "Pending threads",
+          "measurements": [
+            {
+              "statistic": "VALUE",
+              "value": 0.0
+            }
+          ],
+          "availableTags": [
+            {
+              "tag": "instance",
+              "values": [
+                "app-b"
+              ]
+            },
+            {
+              "tag": "application",
+              "values": [
+                "tbooker"
+              ]
+            },
+            {
+              "tag": "pool",
+              "values": [
+                "app-b"
+              ]
+            }
+          ]
+        },
+        "kafka.consumer.fetch.manager.records.lag.max": {
+          "name": "kafka.consumer.fetch.manager.records.lag.max",
+          "description": "The maximum lag in terms of number of records for any partition in this window. NOTE: This is based on current offset and not committed offset",
+          "measurements": [
+            {
+              "statistic": "VALUE",
+              "value": 0.0
+            }
+          ],
+          "availableTags": [
+            {
+              "tag": "instance",
+              "values": [
+                "app-b"
+              ]
+            },
+            {
+              "tag": "application",
+              "values": [
+                "tbooker"
+              ]
+            },
+            {
+              "tag": "spring.id",
+              "values": [
+                "kafkaConsumerFactory.consumer-tbooker-analytics-v1-1",
+                "kafkaConsumerFactory.consumer-tbooker-notifications-v1-2"
+              ]
+            },
+            {
+              "tag": "kafka.version",
+              "values": [
+                "3.9.2"
+              ]
+            },
+            {
+              "tag": "client.id",
+              "values": [
+                "consumer-tbooker-analytics-v1-1",
+                "consumer-tbooker-notifications-v1-2"
+              ]
+            }
+          ]
+        },
+        "booking.outbox.publish.delay": {
+          "unavailable": true
+        }
+      }
+    },
+    "redis": {
+      "keyspace_hits": 125717,
+      "keyspace_misses": 1032,
+      "total_commands_processed": 130997,
+      "evicted_keys": 0
+    },
+    "cpu": {
+      "app-a": {
+        "usage_usec": 27529298,
+        "user_usec": 25567085,
+        "system_usec": 1962213,
+        "nice_usec": 0,
+        "nr_periods": 339,
+        "nr_throttled": 236,
+        "throttled_usec": 26244565,
+        "nr_bursts": 0,
+        "burst_usec": 0
+      },
+      "app-b": {
+        "usage_usec": 27939987,
+        "user_usec": 26074202,
+        "system_usec": 1865784,
+        "nice_usec": 0,
+        "nr_periods": 338,
+        "nr_throttled": 248,
+        "throttled_usec": 29488862,
+        "nr_bursts": 0,
+        "burst_usec": 0
+      },
+      "postgres": {
+        "usage_usec": 29949729,
+        "user_usec": 22349109,
+        "system_usec": 7600620,
+        "nice_usec": 0,
+        "nr_periods": 3252,
+        "nr_throttled": 4,
+        "throttled_usec": 72410,
+        "nr_bursts": 0,
+        "burst_usec": 0
+      },
+      "redis": {
+        "usage_usec": 11933266,
+        "user_usec": 7949672,
+        "system_usec": 3983594,
+        "nice_usec": 0,
+        "nr_periods": 6087,
+        "nr_throttled": 0,
+        "throttled_usec": 0,
+        "nr_bursts": 0,
+        "burst_usec": 0
+      },
+      "kafka": {
+        "usage_usec": 175446090,
+        "user_usec": 148920243,
+        "system_usec": 26525846,
+        "nice_usec": 0,
+        "nr_periods": 7582,
+        "nr_throttled": 1472,
+        "throttled_usec": 173647036,
+        "nr_bursts": 0,
+        "burst_usec": 0
+      },
+      "nginx": {
+        "usage_usec": 28689283,
+        "user_usec": 11407649,
+        "system_usec": 17281633,
+        "nice_usec": 0,
+        "nr_periods": 4027,
+        "nr_throttled": 2,
+        "throttled_usec": 21169,
+        "nr_bursts": 0,
+        "burst_usec": 0
+      }
+    },
+    "db": {
+      "observed_at": "2026-10-14T03:28:35.360772+00:00",
+      "pending": 0,
+      "published": 0,
+      "bookings": 0,
+      "processed": 0,
+      "connections": 13,
+      "active_connections": 0,
+      "lock_waiters": 0
+    }
+  },
+  "after": {
+    "redis": {
+      "keyspace_hits": 125717,
+      "keyspace_misses": 1032,
+      "total_commands_processed": 131004,
+      "evicted_keys": 0
+    },
+    "cpu": {
+      "app-a": {
+        "usage_usec": 34764527,
+        "user_usec": 32273535,
+        "system_usec": 2490992,
+        "nice_usec": 0,
+        "nr_periods": 649,
+        "nr_throttled": 238,
+        "throttled_usec": 26293698,
+        "nr_bursts": 0,
+        "burst_usec": 0
+      },
+      "app-b": {
+        "usage_usec": 34984157,
+        "user_usec": 32513565,
+        "system_usec": 2470591,
+        "nice_usec": 0,
+        "nr_periods": 650,
+        "nr_throttled": 249,
+        "throttled_usec": 29528819,
+        "nr_bursts": 0,
+        "burst_usec": 0
+      },
+      "postgres": {
+        "usage_usec": 31835694,
+        "user_usec": 23760096,
+        "system_usec": 8075597,
+        "nice_usec": 0,
+        "nr_periods": 3565,
+        "nr_throttled": 4,
+        "throttled_usec": 72410,
+        "nr_bursts": 0,
+        "burst_usec": 0
+      },
+      "redis": {
+        "usage_usec": 12203507,
+        "user_usec": 8167584,
+        "system_usec": 4035922,
+        "nice_usec": 0,
+        "nr_periods": 6275,
+        "nr_throttled": 0,
+        "throttled_usec": 0,
+        "nr_bursts": 0,
+        "burst_usec": 0
+      },
+      "kafka": {
+        "usage_usec": 180483721,
+        "user_usec": 153151039,
+        "system_usec": 27332682,
+        "nice_usec": 0,
+        "nr_periods": 7892,
+        "nr_throttled": 1513,
+        "throttled_usec": 179000629,
+        "nr_bursts": 0,
+        "burst_usec": 0
+      },
+      "nginx": {
+        "usage_usec": 29275587,
+        "user_usec": 11669686,
+        "system_usec": 17605900,
+        "nice_usec": 0,
+        "nr_periods": 4331,
+        "nr_throttled": 2,
+        "throttled_usec": 21169,
+        "nr_bursts": 0,
+        "burst_usec": 0
+      }
+    },
+    "jvm": {
+      "app-a": {
+        "jvm.memory.used?tag=area:heap": {
+          "name": "jvm.memory.used",
+          "description": "The amount of used memory",
+          "baseUnit": "bytes",
+          "measurements": [
+            {
+              "statistic": "VALUE",
+              "value": 52437472.0
+            }
+          ],
+          "availableTags": [
+            {
+              "tag": "instance",
+              "values": [
+                "app-a"
+              ]
+            },
+            {
+              "tag": "application",
+              "values": [
+                "tbooker"
+              ]
+            },
+            {
+              "tag": "id",
+              "values": [
+                "Survivor Space",
+                "Eden Space",
+                "Tenured Gen"
+              ]
+            }
+          ]
+        },
+        "jvm.gc.pause": {
+          "name": "jvm.gc.pause",
+          "description": "Time spent in GC pause",
+          "baseUnit": "seconds",
+          "measurements": [
+            {
+              "statistic": "COUNT",
+              "value": 23.0
+            },
+            {
+              "statistic": "TOTAL_TIME",
+              "value": 0.314
+            },
+            {
+              "statistic": "MAX",
+              "value": 0.144
+            }
+          ],
+          "availableTags": [
+            {
+              "tag": "instance",
+              "values": [
+                "app-a"
+              ]
+            },
+            {
+              "tag": "application",
+              "values": [
+                "tbooker"
+              ]
+            },
+            {
+              "tag": "cause",
+              "values": [
+                "Metadata GC Threshold",
+                "Allocation Failure"
+              ]
+            },
+            {
+              "tag": "action",
+              "values": [
+                "end of minor GC",
+                "end of major GC"
+              ]
+            },
+            {
+              "tag": "gc",
+              "values": [
+                "Copy",
+                "MarkSweepCompact"
+              ]
+            }
+          ]
+        },
+        "hikaricp.connections": {
+          "name": "hikaricp.connections",
+          "description": "Total connections",
+          "measurements": [
+            {
+              "statistic": "VALUE",
+              "value": 5.0
+            }
+          ],
+          "availableTags": [
+            {
+              "tag": "instance",
+              "values": [
+                "app-a"
+              ]
+            },
+            {
+              "tag": "application",
+              "values": [
+                "tbooker"
+              ]
+            },
+            {
+              "tag": "pool",
+              "values": [
+                "app-a"
+              ]
+            }
+          ]
+        },
+        "hikaricp.connections.active": {
+          "name": "hikaricp.connections.active",
+          "description": "Active connections",
+          "measurements": [
+            {
+              "statistic": "VALUE",
+              "value": 0.0
+            }
+          ],
+          "availableTags": [
+            {
+              "tag": "instance",
+              "values": [
+                "app-a"
+              ]
+            },
+            {
+              "tag": "application",
+              "values": [
+                "tbooker"
+              ]
+            },
+            {
+              "tag": "pool",
+              "values": [
+                "app-a"
+              ]
+            }
+          ]
+        },
+        "hikaricp.connections.pending": {
+          "name": "hikaricp.connections.pending",
+          "description": "Pending threads",
+          "measurements": [
+            {
+              "statistic": "VALUE",
+              "value": 0.0
+            }
+          ],
+          "availableTags": [
+            {
+              "tag": "instance",
+              "values": [
+                "app-a"
+              ]
+            },
+            {
+              "tag": "application",
+              "values": [
+                "tbooker"
+              ]
+            },
+            {
+              "tag": "pool",
+              "values": [
+                "app-a"
+              ]
+            }
+          ]
+        },
+        "kafka.consumer.fetch.manager.records.lag.max": {
+          "name": "kafka.consumer.fetch.manager.records.lag.max",
+          "description": "The maximum lag in terms of number of records for any partition in this window. NOTE: This is based on current offset and not committed offset",
+          "measurements": [
+            {
+              "statistic": "VALUE",
+              "value": 0.0
+            }
+          ],
+          "availableTags": [
+            {
+              "tag": "instance",
+              "values": [
+                "app-a"
+              ]
+            },
+            {
+              "tag": "application",
+              "values": [
+                "tbooker"
+              ]
+            },
+            {
+              "tag": "spring.id",
+              "values": [
+                "kafkaConsumerFactory.consumer-tbooker-analytics-v1-1",
+                "kafkaConsumerFactory.consumer-tbooker-notifications-v1-2"
+              ]
+            },
+            {
+              "tag": "kafka.version",
+              "values": [
+                "3.9.2"
+              ]
+            },
+            {
+              "tag": "client.id",
+              "values": [
+                "consumer-tbooker-analytics-v1-1",
+                "consumer-tbooker-notifications-v1-2"
+              ]
+            }
+          ]
+        },
+        "booking.outbox.publish.delay": {
+          "unavailable": true
+        }
+      },
+      "app-b": {
+        "jvm.memory.used?tag=area:heap": {
+          "name": "jvm.memory.used",
+          "description": "The amount of used memory",
+          "baseUnit": "bytes",
+          "measurements": [
+            {
+              "statistic": "VALUE",
+              "value": 54490416.0
+            }
+          ],
+          "availableTags": [
+            {
+              "tag": "instance",
+              "values": [
+                "app-b"
+              ]
+            },
+            {
+              "tag": "application",
+              "values": [
+                "tbooker"
+              ]
+            },
+            {
+              "tag": "id",
+              "values": [
+                "Survivor Space",
+                "Eden Space",
+                "Tenured Gen"
+              ]
+            }
+          ]
+        },
+        "jvm.gc.pause": {
+          "name": "jvm.gc.pause",
+          "description": "Time spent in GC pause",
+          "baseUnit": "seconds",
+          "measurements": [
+            {
+              "statistic": "COUNT",
+              "value": 21.0
+            },
+            {
+              "statistic": "TOTAL_TIME",
+              "value": 0.306
+            },
+            {
+              "statistic": "MAX",
+              "value": 0.157
+            }
+          ],
+          "availableTags": [
+            {
+              "tag": "instance",
+              "values": [
+                "app-b"
+              ]
+            },
+            {
+              "tag": "application",
+              "values": [
+                "tbooker"
+              ]
+            },
+            {
+              "tag": "cause",
+              "values": [
+                "Metadata GC Threshold",
+                "Allocation Failure"
+              ]
+            },
+            {
+              "tag": "action",
+              "values": [
+                "end of minor GC",
+                "end of major GC"
+              ]
+            },
+            {
+              "tag": "gc",
+              "values": [
+                "Copy",
+                "MarkSweepCompact"
+              ]
+            }
+          ]
+        },
+        "hikaricp.connections": {
+          "name": "hikaricp.connections",
+          "description": "Total connections",
+          "measurements": [
+            {
+              "statistic": "VALUE",
+              "value": 8.0
+            }
+          ],
+          "availableTags": [
+            {
+              "tag": "instance",
+              "values": [
+                "app-b"
+              ]
+            },
+            {
+              "tag": "application",
+              "values": [
+                "tbooker"
+              ]
+            },
+            {
+              "tag": "pool",
+              "values": [
+                "app-b"
+              ]
+            }
+          ]
+        },
+        "hikaricp.connections.active": {
+          "name": "hikaricp.connections.active",
+          "description": "Active connections",
+          "measurements": [
+            {
+              "statistic": "VALUE",
+              "value": 0.0
+            }
+          ],
+          "availableTags": [
+            {
+              "tag": "instance",
+              "values": [
+                "app-b"
+              ]
+            },
+            {
+              "tag": "application",
+              "values": [
+                "tbooker"
+              ]
+            },
+            {
+              "tag": "pool",
+              "values": [
+                "app-b"
+              ]
+            }
+          ]
+        },
+        "hikaricp.connections.pending": {
+          "name": "hikaricp.connections.pending",
+          "description": "Pending threads",
+          "measurements": [
+            {
+              "statistic": "VALUE",
+              "value": 0.0
+            }
+          ],
+          "availableTags": [
+            {
+              "tag": "instance",
+              "values": [
+                "app-b"
+              ]
+            },
+            {
+              "tag": "application",
+              "values": [
+                "tbooker"
+              ]
+            },
+            {
+              "tag": "pool",
+              "values": [
+                "app-b"
+              ]
+            }
+          ]
+        },
+        "kafka.consumer.fetch.manager.records.lag.max": {
+          "name": "kafka.consumer.fetch.manager.records.lag.max",
+          "description": "The maximum lag in terms of number of records for any partition in this window. NOTE: This is based on current offset and not committed offset",
+          "measurements": [
+            {
+              "statistic": "VALUE",
+              "value": 0.0
+            }
+          ],
+          "availableTags": [
+            {
+              "tag": "instance",
+              "values": [
+                "app-b"
+              ]
+            },
+            {
+              "tag": "application",
+              "values": [
+                "tbooker"
+              ]
+            },
+            {
+              "tag": "spring.id",
+              "values": [
+                "kafkaConsumerFactory.consumer-tbooker-analytics-v1-1",
+                "kafkaConsumerFactory.consumer-tbooker-notifications-v1-2"
+              ]
+            },
+            {
+              "tag": "kafka.version",
+              "values": [
+                "3.9.2"
+              ]
+            },
+            {
+              "tag": "client.id",
+              "values": [
+                "consumer-tbooker-analytics-v1-1",
+                "consumer-tbooker-notifications-v1-2"
+              ]
+            }
+          ]
+        },
+        "booking.outbox.publish.delay": {
+          "unavailable": true
+        }
+      }
+    },
+    "db": {
+      "observed_at": "2026-10-14T03:29:06.318633+00:00",
+      "pending": 0,
+      "published": 0,
+      "bookings": 0,
+      "processed": 0,
+      "connections": 13,
+      "active_connections": 0,
+      "lock_waiters": 0
+    }
+  },
+  "sql": {
+    "calls": 4663,
+    "top": [
+      {
+        "query": "SELECT s.id, s.seat_id AS seatId, p.seat_number AS seatNumber,\n    CASE WHEN s.status = 'HELD' AND r.expires_at <= clock_timestamp()\n         THEN 'AVAILABLE' ELSE s.status END AS status\nFROM tbooker.show_seats s JOIN tbooker.seats p ON p.id = s.seat_id\nLEFT JOIN tbooker.reservations r ON r.show_seat_id = s.id AND r.status = 'HELD'\nWHERE s.show_id = $1 ORDER BY p.seat_number, s.id",
+        "calls": 1500,
+        "total_exec_time": 273.22677699999997,
+        "rows": 120000
+      },
+      {
+        "query": "select count(*) from tbooker.movie_shows ms1_0 where ms1_0.id=$1",
+        "calls": 1500,
+        "total_exec_time": 42.67236299999997,
+        "rows": 1500
+      },
+      {
+        "query": "BEGIN READ ONLY",
+        "calls": 1500,
+        "total_exec_time": 24.071017999999977,
+        "rows": 0
+      },
+      {
+        "query": "SELECT json_build_object($1,clock_timestamp(),\n      $2,(SELECT count(*) FROM tbooker.outbox_events WHERE status<>$3),\n      $4,(SELECT count(*) FROM tbooker.outbox_events WHERE status=$5),\n      $6,(SELECT count(*) FROM tbooker.bookings),\n      $7,(SELECT count(*) FROM tbooker.processed_events),\n      $8,(SELECT count(*) FROM pg_stat_activity WHERE application_name IN ($9,$10)),\n      $11,(SELECT count(*) FROM pg_stat_activity WHERE application_name IN ($12,$13) AND state=$14),\n      $15,(SELECT count(*) FROM pg_stat_activity WHERE application_name IN ($16,$17) AND wait_event_type=$18))",
+        "calls": 11,
+        "total_exec_time": 1.7539690000000001,
+        "rows": 11
+      },
+      {
+        "query": "WITH candidates AS (\n    SELECT event_id FROM tbooker.outbox_events\n    WHERE (status='PENDING' AND next_attempt_at<=clock_timestamp())\n       OR (status='IN_FLIGHT' AND lease_until<=clock_timestamp())\n    ORDER BY created_at,event_id FOR UPDATE SKIP LOCKED LIMIT $1\n)\nUPDATE tbooker.outbox_events e SET status='IN_FLIGHT',lease_token=$2,\n    lease_until=clock_timestamp()+($3 * interval '1 millisecond'),attempts=attempts+1\nFROM candidates c WHERE e.event_id=c.event_id\nRETURNING e.event_id,e.aggregate_id,e.payload::text,e.created_at,e.attempts,e.lease_token",
+        "calls": 66,
+        "total_exec_time": 1.2224590000000002,
+        "rows": 0
+      },
+      {
+        "query": "SELECT COUNT(*) FROM tbooker.outbox_events WHERE status<>$1",
+        "calls": 14,
+        "total_exec_time": 0.09750799999999998,
+        "rows": 14
+      },
+      {
+        "query": "BEGIN",
+        "calls": 68,
+        "total_exec_time": 0.06181099999999999,
+        "rows": 0
+      },
+      {
+        "query": "SELECT s.id FROM tbooker.show_seats s\nJOIN tbooker.reservations r ON r.show_seat_id = s.id\nWHERE s.status = $1 AND r.status = $2 AND r.expires_at <= clock_timestamp()\nORDER BY r.expires_at, s.id LIMIT $3 FOR UPDATE OF s SKIP LOCKED",
+        "calls": 2,
+        "total_exec_time": 0.025009,
+        "rows": 0
+      },
+      {
+        "query": "SHOW TRANSACTION ISOLATION LEVEL",
+        "calls": 2,
+        "total_exec_time": 0.009234,
+        "rows": 0
+      }
+    ]
+  },
+  "sql_window_seconds": 32.46334320999449,
+  "cold_cache": {
+    "keyspace_hits": 125717,
+    "keyspace_misses": 1032,
+    "total_commands_processed": 130994,
+    "evicted_keys": 0
+  },
+  "warmup_exit_code": 99,
+  "event_delays": {
+    "events": 0,
+    "retry_events": 0,
+    "publication_ms": {
+      "count": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "max": null
+    },
+    "notification_ms": {
+      "count": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "max": null
+    },
+    "analytics_ms": {
+      "count": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "max": null
+    }
+  },
+  "drain_seconds": 0.09716653899522498,
+  "consumer_lag_at_end": {
+    "raw": "GROUP                TOPIC                        PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG             CONSUMER-ID                                                          HOST            CLIENT-ID\ntbooker-analytics-v1 tbooker.booking-confirmed.v1 0          -               0               -               consumer-tbooker-analytics-v1-1-7adf13d9-63f5-4959-8d3a-ffdd7fbe20f3 /172.19.0.6     consumer-tbooker-analytics-v1-1\ntbooker-analytics-v1 tbooker.booking-confirmed.v1 1          -               0               -               consumer-tbooker-analytics-v1-1-7adf13d9-63f5-4959-8d3a-ffdd7fbe20f3 /172.19.0.6     consumer-tbooker-analytics-v1-1\ntbooker-analytics-v1 tbooker.booking-confirmed.v1 2          -               0               -               consumer-tbooker-analytics-v1-1-7e0fdaf1-b4fd-487b-8d06-6fcf6097cdc3 /172.19.0.5     consumer-tbooker-analytics-v1-1\nGROUP                    TOPIC                        PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG             CONSUMER-ID                                                              HOST            CLIENT-ID\ntbooker-notifications-v1 tbooker.booking-confirmed.v1 0          -               0               -               consumer-tbooker-notifications-v1-2-d8c67136-4e42-405e-8c30-b66f9bb53484 /172.19.0.5     consumer-tbooker-notifications-v1-2\ntbooker-notifications-v1 tbooker.booking-confirmed.v1 1          -               0               -               consumer-tbooker-notifications-v1-2-d8c67136-4e42-405e-8c30-b66f9bb53484 /172.19.0.5     consumer-tbooker-notifications-v1-2\ntbooker-notifications-v1 tbooker.booking-confirmed.v1 2          -               0               -               consumer-tbooker-notifications-v1-2-daeb5104-17cf-4b11-b269-c27ecef7e881 /172.19.0.6     consumer-tbooker-notifications-v1-2",
+    "committed_offset_lag": null
+  },
+  "final_database": {
+    "bookings": 0,
+    "held": 0,
+    "outbox": 0,
+    "notifications": 0,
+    "markers": 0,
+    "analytics": 0,
+    "duplicate_bookings": 0,
+    "duplicate_holds": 0,
+    "inconsistent_inventory": 0,
+    "unpaid_bookings": 0
+  },
+  "pipeline_target_passed": true,
+  "target_passed": true,
+  "exit_code": 0,
+  "summary": {
+    "state": {
+      "isStdOutTTY": false,
+      "isStdErrTTY": false,
+      "testRunDurationMs": 30000.435975
+    },
+    "metrics": {
+      "business_conflicts": {
+        "type": "counter",
+        "contains": "default",
+        "values": {
+          "count": 0,
+          "rate": 0
+        }
+      },
+      "http_reqs": {
+        "contains": "default",
+        "values": {
+          "count": 1500,
+          "rate": 49.999273385559526
+        },
+        "type": "counter"
+      },
+      "http_req_blocked": {
+        "values": {
+          "min": 0.004447,
+          "max": 1.078528,
+          "avg": 0.01634202933333331,
+          "med": 0.00666,
+          "p(95)": 0.027562,
+          "p(99)": 0.27522571999999995
+        },
+        "type": "trend",
+        "contains": "time"
+      },
+      "http_req_connecting": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "max": 1.00025,
+          "avg": 0.0058225820000000015,
+          "med": 0,
+          "p(95)": 0,
+          "p(99)": 0.20327900000000002,
+          "min": 0
+        }
+      },
+      "http_req_failed": {
+        "type": "rate",
+        "contains": "default",
+        "values": {
+          "rate": 0,
+          "passes": 0,
+          "fails": 1500
+        }
+      },
+      "vus": {
+        "type": "gauge",
+        "contains": "default",
+        "values": {
+          "min": 0,
+          "max": 1,
+          "value": 0
+        }
+      },
+      "checks": {
+        "type": "rate",
+        "contains": "default",
+        "values": {
+          "rate": 1,
+          "passes": 4500,
+          "fails": 0
+        },
+        "thresholds": {
+          "rate==1": {
+            "ok": true
+          }
+        }
+      },
+      "http_req_duration{expected_response:true}": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "p(99)": 14.958668589999991,
+          "min": 3.407222,
+          "max": 43.106731,
+          "avg": 6.062534097333333,
+          "med": 5.434081,
+          "p(95)": 10.363022949999998
+        }
+      },
+      "http_req_waiting": {
+        "values": {
+          "avg": 5.753464869999996,
+          "med": 5.139461000000001,
+          "p(95)": 9.95473585,
+          "p(99)": 14.309599339999997,
+          "min": 3.228928,
+          "max": 42.99295
+        },
+        "type": "trend",
+        "contains": "time"
+      },
+      "http_req_duration": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "p(99)": 14.958668589999991,
+          "min": 3.407222,
+          "max": 43.106731,
+          "avg": 6.062534097333333,
+          "med": 5.434081,
+          "p(95)": 10.363022949999998
+        },
+        "thresholds": {
+          "p(99)<=500": {
+            "ok": true
+          },
+          "p(95)<=250": {
+            "ok": true
+          }
+        }
+      },
+      "vus_max": {
+        "contains": "default",
+        "values": {
+          "value": 40,
+          "min": 40,
+          "max": 40
+        },
+        "type": "gauge"
+      },
+      "http_req_receiving": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "med": 0.21253850000000002,
+          "p(95)": 0.6194881499999999,
+          "p(99)": 1.6009837599999996,
+          "min": 0.045949,
+          "max": 8.321564,
+          "avg": 0.2824150566666666
+        }
+      },
+      "iterations": {
+        "type": "counter",
+        "contains": "default",
+        "values": {
+          "count": 1500,
+          "rate": 49.999273385559526
+        }
+      },
+      "http_req_sending": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "max": 2.158387,
+          "avg": 0.02665417066666664,
+          "med": 0.0195345,
+          "p(95)": 0.05099549999999999,
+          "p(99)": 0.09233212999999998,
+          "min": 0.011097
+        }
+      },
+      "dropped_iterations": {
+        "type": "counter",
+        "contains": "default",
+        "values": {
+          "count": 0,
+          "rate": 0
+        },
+        "thresholds": {
+          "count==0": {
+            "ok": true
+          }
+        }
+      },
+      "duration_availability": {
+        "contains": "time",
+        "values": {
+          "avg": 6.062534097333333,
+          "med": 5.434081,
+          "p(95)": 10.363022949999998,
+          "p(99)": 14.958668589999991,
+          "min": 3.407222,
+          "max": 43.106731
+        },
+        "type": "trend"
+      },
+      "iteration_duration": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "avg": 6.677412083999996,
+          "med": 5.9894965,
+          "p(95)": 11.01424005,
+          "p(99)": 15.584083229999992,
+          "min": 3.860831,
+          "max": 43.811485
+        }
+      },
+      "http_req_tls_handshaking": {
+        "values": {
+          "p(99)": 0,
+          "min": 0,
+          "max": 0,
+          "avg": 0,
+          "med": 0,
+          "p(95)": 0
+        },
+        "type": "trend",
+        "contains": "time"
+      },
+      "unexpected_failures": {
+        "type": "rate",
+        "contains": "default",
+        "values": {
+          "rate": 0,
+          "passes": 0,
+          "fails": 1500
+        },
+        "thresholds": {
+          "rate<0.001": {
+            "ok": true
+          }
+        }
+      },
+      "fixture_exhaustion": {
+        "type": "counter",
+        "contains": "default",
+        "values": {
+          "count": 0,
+          "rate": 0
+        },
+        "thresholds": {
+          "count==0": {
+            "ok": true
+          }
+        }
+      },
+      "data_sent": {
+        "type": "counter",
+        "contains": "data",
+        "values": {
+          "count": 125880,
+          "rate": 4195.939022516155
+        }
+      },
+      "data_received": {
+        "type": "counter",
+        "contains": "data",
+        "values": {
+          "count": 9722571,
+          "rate": 324080.99029300857
+        }
+      }
+    },
+    "root_group": {
+      "path": "",
+      "id": "d41d8cd98f00b204e9800998ecf8427e",
+      "groups": [],
+      "checks": [],
+      "name": ""
+    },
+    "options": {
+      "summaryTrendStats": [
+        "avg",
+        "med",
+        "p(95)",
+        "p(99)",
+        "min",
+        "max"
+      ],
+      "summaryTimeUnit": "",
+      "noColor": false
+    }
+  },
+  "samples": [
+    {
+      "utc": "2026-10-14T03:28:35.828490+00:00",
+      "resources": {
+        "app-a": {
+          "CPUPerc": "22.74%",
+          "MemUsage": "340.8MiB / 768MiB",
+          "PIDs": "45"
+        },
+        "app-b": {
+          "CPUPerc": "25.13%",
+          "MemUsage": "334.1MiB / 768MiB",
+          "PIDs": "54"
+        },
+        "nginx": {
+          "CPUPerc": "1.34%",
+          "MemUsage": "9.297MiB / 128MiB",
+          "PIDs": "6"
+        },
+        "postgres": {
+          "CPUPerc": "7.60%",
+          "MemUsage": "84.99MiB / 512MiB",
+          "PIDs": "19"
+        },
+        "redis": {
+          "CPUPerc": "0.52%",
+          "MemUsage": "3.855MiB / 128MiB",
+          "PIDs": "6"
+        },
+        "kafka": {
+          "CPUPerc": "1.47%",
+          "MemUsage": "404.1MiB / 1GiB",
+          "PIDs": "101"
+        },
+        "k6": {
+          "CPUPerc": "9.44%",
+          "MemUsage": "43.41MiB / 768MiB",
+          "PIDs": "10"
+        }
+      },
+      "database": {
+        "observed_at": "2026-10-14T03:28:38.461985+00:00",
+        "pending": 0,
+        "published": 0,
+        "bookings": 0,
+        "processed": 0,
+        "connections": 13,
+        "active_connections": 0,
+        "lock_waiters": 0
+      },
+      "jvm": {
+        "app-a": {
+          "jvm.memory.used?tag=area:heap": {
+            "name": "jvm.memory.used",
+            "description": "The amount of used memory",
+            "baseUnit": "bytes",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 78000576.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-a"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "id",
+                "values": [
+                  "Survivor Space",
+                  "Eden Space",
+                  "Tenured Gen"
+                ]
+              }
+            ]
+          },
+          "jvm.gc.pause": {
+            "name": "jvm.gc.pause",
+            "description": "Time spent in GC pause",
+            "baseUnit": "seconds",
+            "measurements": [
+              {
+                "statistic": "COUNT",
+                "value": 11.0
+              },
+              {
+                "statistic": "TOTAL_TIME",
+                "value": 0.241
+              },
+              {
+                "statistic": "MAX",
+                "value": 0.144
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-a"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "cause",
+                "values": [
+                  "Metadata GC Threshold",
+                  "Allocation Failure"
+                ]
+              },
+              {
+                "tag": "action",
+                "values": [
+                  "end of minor GC",
+                  "end of major GC"
+                ]
+              },
+              {
+                "tag": "gc",
+                "values": [
+                  "Copy",
+                  "MarkSweepCompact"
+                ]
+              }
+            ]
+          },
+          "hikaricp.connections": {
+            "name": "hikaricp.connections",
+            "description": "Total connections",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 5.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-a"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "pool",
+                "values": [
+                  "app-a"
+                ]
+              }
+            ]
+          },
+          "hikaricp.connections.active": {
+            "name": "hikaricp.connections.active",
+            "description": "Active connections",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 0.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-a"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "pool",
+                "values": [
+                  "app-a"
+                ]
+              }
+            ]
+          },
+          "hikaricp.connections.pending": {
+            "name": "hikaricp.connections.pending",
+            "description": "Pending threads",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 0.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-a"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "pool",
+                "values": [
+                  "app-a"
+                ]
+              }
+            ]
+          },
+          "kafka.consumer.fetch.manager.records.lag.max": {
+            "name": "kafka.consumer.fetch.manager.records.lag.max",
+            "description": "The maximum lag in terms of number of records for any partition in this window. NOTE: This is based on current offset and not committed offset",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 0.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-a"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "spring.id",
+                "values": [
+                  "kafkaConsumerFactory.consumer-tbooker-analytics-v1-1",
+                  "kafkaConsumerFactory.consumer-tbooker-notifications-v1-2"
+                ]
+              },
+              {
+                "tag": "kafka.version",
+                "values": [
+                  "3.9.2"
+                ]
+              },
+              {
+                "tag": "client.id",
+                "values": [
+                  "consumer-tbooker-analytics-v1-1",
+                  "consumer-tbooker-notifications-v1-2"
+                ]
+              }
+            ]
+          },
+          "booking.outbox.publish.delay": {
+            "unavailable": true
+          }
+        },
+        "app-b": {
+          "jvm.memory.used?tag=area:heap": {
+            "name": "jvm.memory.used",
+            "description": "The amount of used memory",
+            "baseUnit": "bytes",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 81982632.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-b"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "id",
+                "values": [
+                  "Survivor Space",
+                  "Eden Space",
+                  "Tenured Gen"
+                ]
+              }
+            ]
+          },
+          "jvm.gc.pause": {
+            "name": "jvm.gc.pause",
+            "description": "Time spent in GC pause",
+            "baseUnit": "seconds",
+            "measurements": [
+              {
+                "statistic": "COUNT",
+                "value": 9.0
+              },
+              {
+                "statistic": "TOTAL_TIME",
+                "value": 0.22899999999999998
+              },
+              {
+                "statistic": "MAX",
+                "value": 0.157
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-b"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "cause",
+                "values": [
+                  "Metadata GC Threshold",
+                  "Allocation Failure"
+                ]
+              },
+              {
+                "tag": "action",
+                "values": [
+                  "end of minor GC",
+                  "end of major GC"
+                ]
+              },
+              {
+                "tag": "gc",
+                "values": [
+                  "Copy",
+                  "MarkSweepCompact"
+                ]
+              }
+            ]
+          },
+          "hikaricp.connections": {
+            "name": "hikaricp.connections",
+            "description": "Total connections",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 8.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-b"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "pool",
+                "values": [
+                  "app-b"
+                ]
+              }
+            ]
+          },
+          "hikaricp.connections.active": {
+            "name": "hikaricp.connections.active",
+            "description": "Active connections",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 0.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-b"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "pool",
+                "values": [
+                  "app-b"
+                ]
+              }
+            ]
+          },
+          "hikaricp.connections.pending": {
+            "name": "hikaricp.connections.pending",
+            "description": "Pending threads",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 0.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-b"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "pool",
+                "values": [
+                  "app-b"
+                ]
+              }
+            ]
+          },
+          "kafka.consumer.fetch.manager.records.lag.max": {
+            "name": "kafka.consumer.fetch.manager.records.lag.max",
+            "description": "The maximum lag in terms of number of records for any partition in this window. NOTE: This is based on current offset and not committed offset",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 0.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-b"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "spring.id",
+                "values": [
+                  "kafkaConsumerFactory.consumer-tbooker-analytics-v1-1",
+                  "kafkaConsumerFactory.consumer-tbooker-notifications-v1-2"
+                ]
+              },
+              {
+                "tag": "kafka.version",
+                "values": [
+                  "3.9.2"
+                ]
+              },
+              {
+                "tag": "client.id",
+                "values": [
+                  "consumer-tbooker-analytics-v1-1",
+                  "consumer-tbooker-notifications-v1-2"
+                ]
+              }
+            ]
+          },
+          "booking.outbox.publish.delay": {
+            "unavailable": true
+          }
+        }
+      },
+      "collection_seconds": 3.659353035967797
+    },
+    {
+      "utc": "2026-10-14T03:28:39.487850+00:00",
+      "resources": {
+        "app-a": {
+          "CPUPerc": "24.52%",
+          "MemUsage": "343MiB / 768MiB",
+          "PIDs": "45"
+        },
+        "app-b": {
+          "CPUPerc": "26.28%",
+          "MemUsage": "336.5MiB / 768MiB",
+          "PIDs": "54"
+        },
+        "nginx": {
+          "CPUPerc": "1.32%",
+          "MemUsage": "9.266MiB / 128MiB",
+          "PIDs": "6"
+        },
+        "postgres": {
+          "CPUPerc": "2.77%",
+          "MemUsage": "84.32MiB / 512MiB",
+          "PIDs": "19"
+        },
+        "redis": {
+          "CPUPerc": "0.30%",
+          "MemUsage": "4.105MiB / 128MiB",
+          "PIDs": "6"
+        },
+        "kafka": {
+          "CPUPerc": "2.09%",
+          "MemUsage": "402.8MiB / 1GiB",
+          "PIDs": "101"
+        },
+        "k6": {
+          "CPUPerc": "6.33%",
+          "MemUsage": "38.23MiB / 768MiB",
+          "PIDs": "10"
+        }
+      },
+      "database": {
+        "observed_at": "2026-10-14T03:28:42.11235+00:00",
+        "pending": 0,
+        "published": 0,
+        "bookings": 0,
+        "processed": 0,
+        "connections": 13,
+        "active_connections": 0,
+        "lock_waiters": 0
+      },
+      "collection_seconds": 2.628950241021812
+    },
+    {
+      "utc": "2026-10-14T03:28:42.487979+00:00",
+      "resources": {
+        "app-a": {
+          "CPUPerc": "23.30%",
+          "MemUsage": "343.2MiB / 768MiB",
+          "PIDs": "45"
+        },
+        "app-b": {
+          "CPUPerc": "16.46%",
+          "MemUsage": "337.2MiB / 768MiB",
+          "PIDs": "54"
+        },
+        "nginx": {
+          "CPUPerc": "1.39%",
+          "MemUsage": "9.324MiB / 128MiB",
+          "PIDs": "6"
+        },
+        "postgres": {
+          "CPUPerc": "7.52%",
+          "MemUsage": "84.51MiB / 512MiB",
+          "PIDs": "19"
+        },
+        "redis": {
+          "CPUPerc": "2.40%",
+          "MemUsage": "4.016MiB / 128MiB",
+          "PIDs": "6"
+        },
+        "kafka": {
+          "CPUPerc": "3.83%",
+          "MemUsage": "402.3MiB / 1GiB",
+          "PIDs": "101"
+        },
+        "k6": {
+          "CPUPerc": "7.80%",
+          "MemUsage": "38.23MiB / 768MiB",
+          "PIDs": "10"
+        }
+      },
+      "database": {
+        "observed_at": "2026-10-14T03:28:44.148598+00:00",
+        "pending": 0,
+        "published": 0,
+        "bookings": 0,
+        "processed": 0,
+        "connections": 13,
+        "active_connections": 0,
+        "lock_waiters": 0
+      },
+      "jvm": {
+        "app-a": {
+          "jvm.memory.used?tag=area:heap": {
+            "name": "jvm.memory.used",
+            "description": "The amount of used memory",
+            "baseUnit": "bytes",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 55447608.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-a"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "id",
+                "values": [
+                  "Survivor Space",
+                  "Eden Space",
+                  "Tenured Gen"
+                ]
+              }
+            ]
+          },
+          "jvm.gc.pause": {
+            "name": "jvm.gc.pause",
+            "description": "Time spent in GC pause",
+            "baseUnit": "seconds",
+            "measurements": [
+              {
+                "statistic": "COUNT",
+                "value": 14.0
+              },
+              {
+                "statistic": "TOTAL_TIME",
+                "value": 0.261
+              },
+              {
+                "statistic": "MAX",
+                "value": 0.144
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-a"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "cause",
+                "values": [
+                  "Metadata GC Threshold",
+                  "Allocation Failure"
+                ]
+              },
+              {
+                "tag": "action",
+                "values": [
+                  "end of minor GC",
+                  "end of major GC"
+                ]
+              },
+              {
+                "tag": "gc",
+                "values": [
+                  "Copy",
+                  "MarkSweepCompact"
+                ]
+              }
+            ]
+          },
+          "hikaricp.connections": {
+            "name": "hikaricp.connections",
+            "description": "Total connections",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 5.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-a"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "pool",
+                "values": [
+                  "app-a"
+                ]
+              }
+            ]
+          },
+          "hikaricp.connections.active": {
+            "name": "hikaricp.connections.active",
+            "description": "Active connections",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 0.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-a"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "pool",
+                "values": [
+                  "app-a"
+                ]
+              }
+            ]
+          },
+          "hikaricp.connections.pending": {
+            "name": "hikaricp.connections.pending",
+            "description": "Pending threads",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 0.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-a"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "pool",
+                "values": [
+                  "app-a"
+                ]
+              }
+            ]
+          },
+          "kafka.consumer.fetch.manager.records.lag.max": {
+            "name": "kafka.consumer.fetch.manager.records.lag.max",
+            "description": "The maximum lag in terms of number of records for any partition in this window. NOTE: This is based on current offset and not committed offset",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 0.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-a"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "spring.id",
+                "values": [
+                  "kafkaConsumerFactory.consumer-tbooker-analytics-v1-1",
+                  "kafkaConsumerFactory.consumer-tbooker-notifications-v1-2"
+                ]
+              },
+              {
+                "tag": "kafka.version",
+                "values": [
+                  "3.9.2"
+                ]
+              },
+              {
+                "tag": "client.id",
+                "values": [
+                  "consumer-tbooker-analytics-v1-1",
+                  "consumer-tbooker-notifications-v1-2"
+                ]
+              }
+            ]
+          },
+          "booking.outbox.publish.delay": {
+            "unavailable": true
+          }
+        },
+        "app-b": {
+          "jvm.memory.used?tag=area:heap": {
+            "name": "jvm.memory.used",
+            "description": "The amount of used memory",
+            "baseUnit": "bytes",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 60219656.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-b"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "id",
+                "values": [
+                  "Survivor Space",
+                  "Eden Space",
+                  "Tenured Gen"
+                ]
+              }
+            ]
+          },
+          "jvm.gc.pause": {
+            "name": "jvm.gc.pause",
+            "description": "Time spent in GC pause",
+            "baseUnit": "seconds",
+            "measurements": [
+              {
+                "statistic": "COUNT",
+                "value": 12.0
+              },
+              {
+                "statistic": "TOTAL_TIME",
+                "value": 0.249
+              },
+              {
+                "statistic": "MAX",
+                "value": 0.157
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-b"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "cause",
+                "values": [
+                  "Metadata GC Threshold",
+                  "Allocation Failure"
+                ]
+              },
+              {
+                "tag": "action",
+                "values": [
+                  "end of minor GC",
+                  "end of major GC"
+                ]
+              },
+              {
+                "tag": "gc",
+                "values": [
+                  "Copy",
+                  "MarkSweepCompact"
+                ]
+              }
+            ]
+          },
+          "hikaricp.connections": {
+            "name": "hikaricp.connections",
+            "description": "Total connections",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 8.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-b"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "pool",
+                "values": [
+                  "app-b"
+                ]
+              }
+            ]
+          },
+          "hikaricp.connections.active": {
+            "name": "hikaricp.connections.active",
+            "description": "Active connections",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 0.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-b"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "pool",
+                "values": [
+                  "app-b"
+                ]
+              }
+            ]
+          },
+          "hikaricp.connections.pending": {
+            "name": "hikaricp.connections.pending",
+            "description": "Pending threads",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 0.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-b"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "pool",
+                "values": [
+                  "app-b"
+                ]
+              }
+            ]
+          },
+          "kafka.consumer.fetch.manager.records.lag.max": {
+            "name": "kafka.consumer.fetch.manager.records.lag.max",
+            "description": "The maximum lag in terms of number of records for any partition in this window. NOTE: This is based on current offset and not committed offset",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 0.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-b"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "spring.id",
+                "values": [
+                  "kafkaConsumerFactory.consumer-tbooker-analytics-v1-1",
+                  "kafkaConsumerFactory.consumer-tbooker-notifications-v1-2"
+                ]
+              },
+              {
+                "tag": "kafka.version",
+                "values": [
+                  "3.9.2"
+                ]
+              },
+              {
+                "tag": "client.id",
+                "values": [
+                  "consumer-tbooker-analytics-v1-1",
+                  "consumer-tbooker-notifications-v1-2"
+                ]
+              }
+            ]
+          },
+          "booking.outbox.publish.delay": {
+            "unavailable": true
+          }
+        }
+      },
+      "collection_seconds": 2.804788570967503
+    },
+    {
+      "utc": "2026-10-14T03:28:45.489069+00:00",
+      "resources": {
+        "app-a": {
+          "CPUPerc": "19.30%",
+          "MemUsage": "345.2MiB / 768MiB",
+          "PIDs": "45"
+        },
+        "app-b": {
+          "CPUPerc": "20.53%",
+          "MemUsage": "339.3MiB / 768MiB",
+          "PIDs": "54"
+        },
+        "nginx": {
+          "CPUPerc": "1.50%",
+          "MemUsage": "9.207MiB / 128MiB",
+          "PIDs": "6"
+        },
+        "postgres": {
+          "CPUPerc": "3.14%",
+          "MemUsage": "84.64MiB / 512MiB",
+          "PIDs": "19"
+        },
+        "redis": {
+          "CPUPerc": "0.50%",
+          "MemUsage": "3.855MiB / 128MiB",
+          "PIDs": "6"
+        },
+        "kafka": {
+          "CPUPerc": "93.32%",
+          "MemUsage": "487.6MiB / 1GiB",
+          "PIDs": "125"
+        },
+        "k6": {
+          "CPUPerc": "14.63%",
+          "MemUsage": "38.45MiB / 768MiB",
+          "PIDs": "10"
+        }
+      },
+      "database": {
+        "observed_at": "2026-10-14T03:28:48.122+00:00",
+        "pending": 0,
+        "published": 0,
+        "bookings": 0,
+        "processed": 0,
+        "connections": 13,
+        "active_connections": 0,
+        "lock_waiters": 0
+      },
+      "collection_seconds": 2.6376701590488665
+    },
+    {
+      "utc": "2026-10-14T03:28:48.489207+00:00",
+      "resources": {
+        "app-a": {
+          "CPUPerc": "24.51%",
+          "MemUsage": "346.1MiB / 768MiB",
+          "PIDs": "45"
+        },
+        "app-b": {
+          "CPUPerc": "24.66%",
+          "MemUsage": "339.3MiB / 768MiB",
+          "PIDs": "54"
+        },
+        "nginx": {
+          "CPUPerc": "3.01%",
+          "MemUsage": "9.129MiB / 128MiB",
+          "PIDs": "6"
+        },
+        "postgres": {
+          "CPUPerc": "3.04%",
+          "MemUsage": "84.92MiB / 512MiB",
+          "PIDs": "19"
+        },
+        "redis": {
+          "CPUPerc": "0.32%",
+          "MemUsage": "3.855MiB / 128MiB",
+          "PIDs": "6"
+        },
+        "kafka": {
+          "CPUPerc": "1.43%",
+          "MemUsage": "402.9MiB / 1GiB",
+          "PIDs": "101"
+        },
+        "k6": {
+          "CPUPerc": "6.41%",
+          "MemUsage": "38.34MiB / 768MiB",
+          "PIDs": "10"
+        }
+      },
+      "database": {
+        "observed_at": "2026-10-14T03:28:50.144693+00:00",
+        "pending": 0,
+        "published": 0,
+        "bookings": 0,
+        "processed": 0,
+        "connections": 13,
+        "active_connections": 0,
+        "lock_waiters": 0
+      },
+      "jvm": {
+        "app-a": {
+          "jvm.memory.used?tag=area:heap": {
+            "name": "jvm.memory.used",
+            "description": "The amount of used memory",
+            "baseUnit": "bytes",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 70270176.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-a"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "id",
+                "values": [
+                  "Survivor Space",
+                  "Eden Space",
+                  "Tenured Gen"
+                ]
+              }
+            ]
+          },
+          "jvm.gc.pause": {
+            "name": "jvm.gc.pause",
+            "description": "Time spent in GC pause",
+            "baseUnit": "seconds",
+            "measurements": [
+              {
+                "statistic": "COUNT",
+                "value": 16.0
+              },
+              {
+                "statistic": "TOTAL_TIME",
+                "value": 0.273
+              },
+              {
+                "statistic": "MAX",
+                "value": 0.144
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-a"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "cause",
+                "values": [
+                  "Metadata GC Threshold",
+                  "Allocation Failure"
+                ]
+              },
+              {
+                "tag": "action",
+                "values": [
+                  "end of minor GC",
+                  "end of major GC"
+                ]
+              },
+              {
+                "tag": "gc",
+                "values": [
+                  "Copy",
+                  "MarkSweepCompact"
+                ]
+              }
+            ]
+          },
+          "hikaricp.connections": {
+            "name": "hikaricp.connections",
+            "description": "Total connections",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 5.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-a"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "pool",
+                "values": [
+                  "app-a"
+                ]
+              }
+            ]
+          },
+          "hikaricp.connections.active": {
+            "name": "hikaricp.connections.active",
+            "description": "Active connections",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 0.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-a"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "pool",
+                "values": [
+                  "app-a"
+                ]
+              }
+            ]
+          },
+          "hikaricp.connections.pending": {
+            "name": "hikaricp.connections.pending",
+            "description": "Pending threads",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 0.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-a"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "pool",
+                "values": [
+                  "app-a"
+                ]
+              }
+            ]
+          },
+          "kafka.consumer.fetch.manager.records.lag.max": {
+            "name": "kafka.consumer.fetch.manager.records.lag.max",
+            "description": "The maximum lag in terms of number of records for any partition in this window. NOTE: This is based on current offset and not committed offset",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 0.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-a"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "spring.id",
+                "values": [
+                  "kafkaConsumerFactory.consumer-tbooker-analytics-v1-1",
+                  "kafkaConsumerFactory.consumer-tbooker-notifications-v1-2"
+                ]
+              },
+              {
+                "tag": "kafka.version",
+                "values": [
+                  "3.9.2"
+                ]
+              },
+              {
+                "tag": "client.id",
+                "values": [
+                  "consumer-tbooker-analytics-v1-1",
+                  "consumer-tbooker-notifications-v1-2"
+                ]
+              }
+            ]
+          },
+          "booking.outbox.publish.delay": {
+            "unavailable": true
+          }
+        },
+        "app-b": {
+          "jvm.memory.used?tag=area:heap": {
+            "name": "jvm.memory.used",
+            "description": "The amount of used memory",
+            "baseUnit": "bytes",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 76095512.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-b"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "id",
+                "values": [
+                  "Survivor Space",
+                  "Eden Space",
+                  "Tenured Gen"
+                ]
+              }
+            ]
+          },
+          "jvm.gc.pause": {
+            "name": "jvm.gc.pause",
+            "description": "Time spent in GC pause",
+            "baseUnit": "seconds",
+            "measurements": [
+              {
+                "statistic": "COUNT",
+                "value": 14.0
+              },
+              {
+                "statistic": "TOTAL_TIME",
+                "value": 0.261
+              },
+              {
+                "statistic": "MAX",
+                "value": 0.157
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-b"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "cause",
+                "values": [
+                  "Metadata GC Threshold",
+                  "Allocation Failure"
+                ]
+              },
+              {
+                "tag": "action",
+                "values": [
+                  "end of minor GC",
+                  "end of major GC"
+                ]
+              },
+              {
+                "tag": "gc",
+                "values": [
+                  "Copy",
+                  "MarkSweepCompact"
+                ]
+              }
+            ]
+          },
+          "hikaricp.connections": {
+            "name": "hikaricp.connections",
+            "description": "Total connections",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 8.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-b"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "pool",
+                "values": [
+                  "app-b"
+                ]
+              }
+            ]
+          },
+          "hikaricp.connections.active": {
+            "name": "hikaricp.connections.active",
+            "description": "Active connections",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 0.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-b"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "pool",
+                "values": [
+                  "app-b"
+                ]
+              }
+            ]
+          },
+          "hikaricp.connections.pending": {
+            "name": "hikaricp.connections.pending",
+            "description": "Pending threads",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 0.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-b"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "pool",
+                "values": [
+                  "app-b"
+                ]
+              }
+            ]
+          },
+          "kafka.consumer.fetch.manager.records.lag.max": {
+            "name": "kafka.consumer.fetch.manager.records.lag.max",
+            "description": "The maximum lag in terms of number of records for any partition in this window. NOTE: This is based on current offset and not committed offset",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 0.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-b"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "spring.id",
+                "values": [
+                  "kafkaConsumerFactory.consumer-tbooker-analytics-v1-1",
+                  "kafkaConsumerFactory.consumer-tbooker-notifications-v1-2"
+                ]
+              },
+              {
+                "tag": "kafka.version",
+                "values": [
+                  "3.9.2"
+                ]
+              },
+              {
+                "tag": "client.id",
+                "values": [
+                  "consumer-tbooker-analytics-v1-1",
+                  "consumer-tbooker-notifications-v1-2"
+                ]
+              }
+            ]
+          },
+          "booking.outbox.publish.delay": {
+            "unavailable": true
+          }
+        }
+      },
+      "collection_seconds": 2.745357051026076
+    },
+    {
+      "utc": "2026-10-14T03:28:51.489351+00:00",
+      "resources": {
+        "app-a": {
+          "CPUPerc": "27.07%",
+          "MemUsage": "347.6MiB / 768MiB",
+          "PIDs": "45"
+        },
+        "app-b": {
+          "CPUPerc": "17.38%",
+          "MemUsage": "341.5MiB / 768MiB",
+          "PIDs": "54"
+        },
+        "nginx": {
+          "CPUPerc": "1.82%",
+          "MemUsage": "8.941MiB / 128MiB",
+          "PIDs": "6"
+        },
+        "postgres": {
+          "CPUPerc": "8.70%",
+          "MemUsage": "84.42MiB / 512MiB",
+          "PIDs": "19"
+        },
+        "redis": {
+          "CPUPerc": "2.43%",
+          "MemUsage": "4.492MiB / 128MiB",
+          "PIDs": "6"
+        },
+        "kafka": {
+          "CPUPerc": "1.42%",
+          "MemUsage": "402.6MiB / 1GiB",
+          "PIDs": "101"
+        },
+        "k6": {
+          "CPUPerc": "7.35%",
+          "MemUsage": "40.21MiB / 768MiB",
+          "PIDs": "10"
+        }
+      },
+      "database": {
+        "observed_at": "2026-10-14T03:28:54.130462+00:00",
+        "pending": 0,
+        "published": 0,
+        "bookings": 0,
+        "processed": 0,
+        "connections": 13,
+        "active_connections": 0,
+        "lock_waiters": 0
+      },
+      "collection_seconds": 2.645827655971516
+    },
+    {
+      "utc": "2026-10-14T03:28:54.489582+00:00",
+      "resources": {
+        "app-a": {
+          "CPUPerc": "22.97%",
+          "MemUsage": "347.5MiB / 768MiB",
+          "PIDs": "45"
+        },
+        "app-b": {
+          "CPUPerc": "17.38%",
+          "MemUsage": "341.7MiB / 768MiB",
+          "PIDs": "54"
+        },
+        "nginx": {
+          "CPUPerc": "2.79%",
+          "MemUsage": "8.754MiB / 128MiB",
+          "PIDs": "6"
+        },
+        "postgres": {
+          "CPUPerc": "2.85%",
+          "MemUsage": "84.53MiB / 512MiB",
+          "PIDs": "19"
+        },
+        "redis": {
+          "CPUPerc": "0.39%",
+          "MemUsage": "3.855MiB / 128MiB",
+          "PIDs": "6"
+        },
+        "kafka": {
+          "CPUPerc": "2.40%",
+          "MemUsage": "402.9MiB / 1GiB",
+          "PIDs": "101"
+        },
+        "k6": {
+          "CPUPerc": "7.76%",
+          "MemUsage": "40.31MiB / 768MiB",
+          "PIDs": "10"
+        }
+      },
+      "database": {
+        "observed_at": "2026-10-14T03:28:56.149743+00:00",
+        "pending": 0,
+        "published": 0,
+        "bookings": 0,
+        "processed": 0,
+        "connections": 13,
+        "active_connections": 0,
+        "lock_waiters": 0
+      },
+      "jvm": {
+        "app-a": {
+          "jvm.memory.used?tag=area:heap": {
+            "name": "jvm.memory.used",
+            "description": "The amount of used memory",
+            "baseUnit": "bytes",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 51971096.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-a"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "id",
+                "values": [
+                  "Survivor Space",
+                  "Eden Space",
+                  "Tenured Gen"
+                ]
+              }
+            ]
+          },
+          "jvm.gc.pause": {
+            "name": "jvm.gc.pause",
+            "description": "Time spent in GC pause",
+            "baseUnit": "seconds",
+            "measurements": [
+              {
+                "statistic": "COUNT",
+                "value": 19.0
+              },
+              {
+                "statistic": "TOTAL_TIME",
+                "value": 0.291
+              },
+              {
+                "statistic": "MAX",
+                "value": 0.144
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-a"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "cause",
+                "values": [
+                  "Metadata GC Threshold",
+                  "Allocation Failure"
+                ]
+              },
+              {
+                "tag": "action",
+                "values": [
+                  "end of minor GC",
+                  "end of major GC"
+                ]
+              },
+              {
+                "tag": "gc",
+                "values": [
+                  "Copy",
+                  "MarkSweepCompact"
+                ]
+              }
+            ]
+          },
+          "hikaricp.connections": {
+            "name": "hikaricp.connections",
+            "description": "Total connections",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 5.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-a"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "pool",
+                "values": [
+                  "app-a"
+                ]
+              }
+            ]
+          },
+          "hikaricp.connections.active": {
+            "name": "hikaricp.connections.active",
+            "description": "Active connections",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 0.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-a"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "pool",
+                "values": [
+                  "app-a"
+                ]
+              }
+            ]
+          },
+          "hikaricp.connections.pending": {
+            "name": "hikaricp.connections.pending",
+            "description": "Pending threads",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 0.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-a"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "pool",
+                "values": [
+                  "app-a"
+                ]
+              }
+            ]
+          },
+          "kafka.consumer.fetch.manager.records.lag.max": {
+            "name": "kafka.consumer.fetch.manager.records.lag.max",
+            "description": "The maximum lag in terms of number of records for any partition in this window. NOTE: This is based on current offset and not committed offset",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 0.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-a"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "spring.id",
+                "values": [
+                  "kafkaConsumerFactory.consumer-tbooker-analytics-v1-1",
+                  "kafkaConsumerFactory.consumer-tbooker-notifications-v1-2"
+                ]
+              },
+              {
+                "tag": "kafka.version",
+                "values": [
+                  "3.9.2"
+                ]
+              },
+              {
+                "tag": "client.id",
+                "values": [
+                  "consumer-tbooker-analytics-v1-1",
+                  "consumer-tbooker-notifications-v1-2"
+                ]
+              }
+            ]
+          },
+          "booking.outbox.publish.delay": {
+            "unavailable": true
+          }
+        },
+        "app-b": {
+          "jvm.memory.used?tag=area:heap": {
+            "name": "jvm.memory.used",
+            "description": "The amount of used memory",
+            "baseUnit": "bytes",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 58329240.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-b"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "id",
+                "values": [
+                  "Survivor Space",
+                  "Eden Space",
+                  "Tenured Gen"
+                ]
+              }
+            ]
+          },
+          "jvm.gc.pause": {
+            "name": "jvm.gc.pause",
+            "description": "Time spent in GC pause",
+            "baseUnit": "seconds",
+            "measurements": [
+              {
+                "statistic": "COUNT",
+                "value": 17.0
+              },
+              {
+                "statistic": "TOTAL_TIME",
+                "value": 0.279
+              },
+              {
+                "statistic": "MAX",
+                "value": 0.157
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-b"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "cause",
+                "values": [
+                  "Metadata GC Threshold",
+                  "Allocation Failure"
+                ]
+              },
+              {
+                "tag": "action",
+                "values": [
+                  "end of minor GC",
+                  "end of major GC"
+                ]
+              },
+              {
+                "tag": "gc",
+                "values": [
+                  "Copy",
+                  "MarkSweepCompact"
+                ]
+              }
+            ]
+          },
+          "hikaricp.connections": {
+            "name": "hikaricp.connections",
+            "description": "Total connections",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 8.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-b"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "pool",
+                "values": [
+                  "app-b"
+                ]
+              }
+            ]
+          },
+          "hikaricp.connections.active": {
+            "name": "hikaricp.connections.active",
+            "description": "Active connections",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 0.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-b"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "pool",
+                "values": [
+                  "app-b"
+                ]
+              }
+            ]
+          },
+          "hikaricp.connections.pending": {
+            "name": "hikaricp.connections.pending",
+            "description": "Pending threads",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 0.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-b"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "pool",
+                "values": [
+                  "app-b"
+                ]
+              }
+            ]
+          },
+          "kafka.consumer.fetch.manager.records.lag.max": {
+            "name": "kafka.consumer.fetch.manager.records.lag.max",
+            "description": "The maximum lag in terms of number of records for any partition in this window. NOTE: This is based on current offset and not committed offset",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 0.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-b"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "spring.id",
+                "values": [
+                  "kafkaConsumerFactory.consumer-tbooker-analytics-v1-1",
+                  "kafkaConsumerFactory.consumer-tbooker-notifications-v1-2"
+                ]
+              },
+              {
+                "tag": "kafka.version",
+                "values": [
+                  "3.9.2"
+                ]
+              },
+              {
+                "tag": "client.id",
+                "values": [
+                  "consumer-tbooker-analytics-v1-1",
+                  "consumer-tbooker-notifications-v1-2"
+                ]
+              }
+            ]
+          },
+          "booking.outbox.publish.delay": {
+            "unavailable": true
+          }
+        }
+      },
+      "collection_seconds": 2.7547100980300456
+    },
+    {
+      "utc": "2026-10-14T03:28:57.489699+00:00",
+      "resources": {
+        "app-a": {
+          "CPUPerc": "13.47%",
+          "MemUsage": "348.2MiB / 768MiB",
+          "PIDs": "45"
+        },
+        "app-b": {
+          "CPUPerc": "12.17%",
+          "MemUsage": "342.1MiB / 768MiB",
+          "PIDs": "54"
+        },
+        "nginx": {
+          "CPUPerc": "1.66%",
+          "MemUsage": "9.098MiB / 128MiB",
+          "PIDs": "6"
+        },
+        "postgres": {
+          "CPUPerc": "2.79%",
+          "MemUsage": "84.58MiB / 512MiB",
+          "PIDs": "19"
+        },
+        "redis": {
+          "CPUPerc": "0.33%",
+          "MemUsage": "3.855MiB / 128MiB",
+          "PIDs": "6"
+        },
+        "kafka": {
+          "CPUPerc": "98.08%",
+          "MemUsage": "472.3MiB / 1GiB",
+          "PIDs": "125"
+        },
+        "k6": {
+          "CPUPerc": "6.39%",
+          "MemUsage": "40.93MiB / 768MiB",
+          "PIDs": "10"
+        }
+      },
+      "database": {
+        "observed_at": "2026-10-14T03:29:00.118803+00:00",
+        "pending": 0,
+        "published": 0,
+        "bookings": 0,
+        "processed": 0,
+        "connections": 13,
+        "active_connections": 0,
+        "lock_waiters": 0
+      },
+      "collection_seconds": 2.633085196954198
+    },
+    {
+      "utc": "2026-10-14T03:29:00.489770+00:00",
+      "resources": {
+        "app-a": {
+          "CPUPerc": "15.87%",
+          "MemUsage": "348.7MiB / 768MiB",
+          "PIDs": "45"
+        },
+        "app-b": {
+          "CPUPerc": "12.63%",
+          "MemUsage": "342.9MiB / 768MiB",
+          "PIDs": "54"
+        },
+        "nginx": {
+          "CPUPerc": "1.18%",
+          "MemUsage": "9.152MiB / 128MiB",
+          "PIDs": "6"
+        },
+        "postgres": {
+          "CPUPerc": "2.51%",
+          "MemUsage": "84.69MiB / 512MiB",
+          "PIDs": "19"
+        },
+        "redis": {
+          "CPUPerc": "0.30%",
+          "MemUsage": "3.855MiB / 128MiB",
+          "PIDs": "6"
+        },
+        "kafka": {
+          "CPUPerc": "1.82%",
+          "MemUsage": "403MiB / 1GiB",
+          "PIDs": "101"
+        },
+        "k6": {
+          "CPUPerc": "5.58%",
+          "MemUsage": "40.56MiB / 768MiB",
+          "PIDs": "10"
+        }
+      },
+      "database": {
+        "observed_at": "2026-10-14T03:29:02.125178+00:00",
+        "pending": 0,
+        "published": 0,
+        "bookings": 0,
+        "processed": 0,
+        "connections": 13,
+        "active_connections": 0,
+        "lock_waiters": 0
+      },
+      "jvm": {
+        "app-a": {
+          "jvm.memory.used?tag=area:heap": {
+            "name": "jvm.memory.used",
+            "description": "The amount of used memory",
+            "baseUnit": "bytes",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 68108872.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-a"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "id",
+                "values": [
+                  "Survivor Space",
+                  "Eden Space",
+                  "Tenured Gen"
+                ]
+              }
+            ]
+          },
+          "jvm.gc.pause": {
+            "name": "jvm.gc.pause",
+            "description": "Time spent in GC pause",
+            "baseUnit": "seconds",
+            "measurements": [
+              {
+                "statistic": "COUNT",
+                "value": 21.0
+              },
+              {
+                "statistic": "TOTAL_TIME",
+                "value": 0.303
+              },
+              {
+                "statistic": "MAX",
+                "value": 0.144
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-a"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "cause",
+                "values": [
+                  "Metadata GC Threshold",
+                  "Allocation Failure"
+                ]
+              },
+              {
+                "tag": "action",
+                "values": [
+                  "end of minor GC",
+                  "end of major GC"
+                ]
+              },
+              {
+                "tag": "gc",
+                "values": [
+                  "Copy",
+                  "MarkSweepCompact"
+                ]
+              }
+            ]
+          },
+          "hikaricp.connections": {
+            "name": "hikaricp.connections",
+            "description": "Total connections",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 5.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-a"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "pool",
+                "values": [
+                  "app-a"
+                ]
+              }
+            ]
+          },
+          "hikaricp.connections.active": {
+            "name": "hikaricp.connections.active",
+            "description": "Active connections",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 0.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-a"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "pool",
+                "values": [
+                  "app-a"
+                ]
+              }
+            ]
+          },
+          "hikaricp.connections.pending": {
+            "name": "hikaricp.connections.pending",
+            "description": "Pending threads",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 0.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-a"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "pool",
+                "values": [
+                  "app-a"
+                ]
+              }
+            ]
+          },
+          "kafka.consumer.fetch.manager.records.lag.max": {
+            "name": "kafka.consumer.fetch.manager.records.lag.max",
+            "description": "The maximum lag in terms of number of records for any partition in this window. NOTE: This is based on current offset and not committed offset",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 0.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-a"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "spring.id",
+                "values": [
+                  "kafkaConsumerFactory.consumer-tbooker-analytics-v1-1",
+                  "kafkaConsumerFactory.consumer-tbooker-notifications-v1-2"
+                ]
+              },
+              {
+                "tag": "kafka.version",
+                "values": [
+                  "3.9.2"
+                ]
+              },
+              {
+                "tag": "client.id",
+                "values": [
+                  "consumer-tbooker-analytics-v1-1",
+                  "consumer-tbooker-notifications-v1-2"
+                ]
+              }
+            ]
+          },
+          "booking.outbox.publish.delay": {
+            "unavailable": true
+          }
+        },
+        "app-b": {
+          "jvm.memory.used?tag=area:heap": {
+            "name": "jvm.memory.used",
+            "description": "The amount of used memory",
+            "baseUnit": "bytes",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 75986840.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-b"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "id",
+                "values": [
+                  "Survivor Space",
+                  "Eden Space",
+                  "Tenured Gen"
+                ]
+              }
+            ]
+          },
+          "jvm.gc.pause": {
+            "name": "jvm.gc.pause",
+            "description": "Time spent in GC pause",
+            "baseUnit": "seconds",
+            "measurements": [
+              {
+                "statistic": "COUNT",
+                "value": 19.0
+              },
+              {
+                "statistic": "TOTAL_TIME",
+                "value": 0.29200000000000004
+              },
+              {
+                "statistic": "MAX",
+                "value": 0.157
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-b"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "cause",
+                "values": [
+                  "Metadata GC Threshold",
+                  "Allocation Failure"
+                ]
+              },
+              {
+                "tag": "action",
+                "values": [
+                  "end of minor GC",
+                  "end of major GC"
+                ]
+              },
+              {
+                "tag": "gc",
+                "values": [
+                  "Copy",
+                  "MarkSweepCompact"
+                ]
+              }
+            ]
+          },
+          "hikaricp.connections": {
+            "name": "hikaricp.connections",
+            "description": "Total connections",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 8.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-b"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "pool",
+                "values": [
+                  "app-b"
+                ]
+              }
+            ]
+          },
+          "hikaricp.connections.active": {
+            "name": "hikaricp.connections.active",
+            "description": "Active connections",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 0.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-b"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "pool",
+                "values": [
+                  "app-b"
+                ]
+              }
+            ]
+          },
+          "hikaricp.connections.pending": {
+            "name": "hikaricp.connections.pending",
+            "description": "Pending threads",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 0.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-b"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "pool",
+                "values": [
+                  "app-b"
+                ]
+              }
+            ]
+          },
+          "kafka.consumer.fetch.manager.records.lag.max": {
+            "name": "kafka.consumer.fetch.manager.records.lag.max",
+            "description": "The maximum lag in terms of number of records for any partition in this window. NOTE: This is based on current offset and not committed offset",
+            "measurements": [
+              {
+                "statistic": "VALUE",
+                "value": 0.0
+              }
+            ],
+            "availableTags": [
+              {
+                "tag": "instance",
+                "values": [
+                  "app-b"
+                ]
+              },
+              {
+                "tag": "application",
+                "values": [
+                  "tbooker"
+                ]
+              },
+              {
+                "tag": "spring.id",
+                "values": [
+                  "kafkaConsumerFactory.consumer-tbooker-analytics-v1-1",
+                  "kafkaConsumerFactory.consumer-tbooker-notifications-v1-2"
+                ]
+              },
+              {
+                "tag": "kafka.version",
+                "values": [
+                  "3.9.2"
+                ]
+              },
+              {
+                "tag": "client.id",
+                "values": [
+                  "consumer-tbooker-analytics-v1-1",
+                  "consumer-tbooker-notifications-v1-2"
+                ]
+              }
+            ]
+          },
+          "booking.outbox.publish.delay": {
+            "unavailable": true
+          }
+        }
+      },
+      "collection_seconds": 2.5946251929854043
+    },
+    {
+      "utc": "2026-10-14T03:29:03.489901+00:00",
+      "resources": {
+        "app-a": {
+          "CPUPerc": "14.32%",
+          "MemUsage": "350.4MiB / 768MiB",
+          "PIDs": "45"
+        },
+        "app-b": {
+          "CPUPerc": "18.39%",
+          "MemUsage": "344.6MiB / 768MiB",
+          "PIDs": "54"
+        },
+        "nginx": {
+          "CPUPerc": "1.30%",
+          "MemUsage": "9.074MiB / 128MiB",
+          "PIDs": "6"
+        },
+        "postgres": {
+          "CPUPerc": "2.71%",
+          "MemUsage": "84.74MiB / 512MiB",
+          "PIDs": "19"
+        },
+        "redis": {
+          "CPUPerc": "0.33%",
+          "MemUsage": "3.855MiB / 128MiB",
+          "PIDs": "6"
+        },
+        "kafka": {
+          "CPUPerc": "1.15%",
+          "MemUsage": "403.4MiB / 1GiB",
+          "PIDs": "101"
+        },
+        "k6": {
+          "CPUPerc": "7.31%",
+          "MemUsage": "41.01MiB / 768MiB",
+          "PIDs": "10"
+        }
+      },
+      "database": {
+        "observed_at": "2026-10-14T03:29:06.129944+00:00",
+        "pending": 0,
+        "published": 0,
+        "bookings": 0,
+        "processed": 0,
+        "connections": 13,
+        "active_connections": 0,
+        "lock_waiters": 0
+      },
+      "collection_seconds": 2.6447708039777353
+    }
+  ],
+  "fault": [],
+  "elapsed_seconds": 30.523733654001262
+}

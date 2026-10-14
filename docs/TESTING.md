@@ -676,3 +676,36 @@ this restricted environment. No GitHub-hosted deployment, new benchmark,
 multi-host failover, volume-loss recovery, or production hardening was tested.
 All created test stacks/volumes were disposable and removed by their owners;
 no developer data was deleted. See [DEPLOYMENT.md](DEPLOYMENT.md).
+
+## Phase 12C regression verification — 2026-10-14
+
+Before starting capacity measurements, Java 21 and the full Maven wrapper
+`clean verify` ran on `d5d57ca` plus the Phase 12C benchmark-only working changes.
+The build completed at `2026-10-14T03:04:18Z`: **251 passed, zero failures, zero
+errors, zero skipped**, across 13 Surefire suites. PostgreSQL, Redis and Kafka
+Testcontainers were available. The exact command, suite totals and XML report
+hashes are retained in [regression.json](../performance/results/2026-10-14-phase12c/regression.json).
+Cloud Maven settings and dependency-cache overrides were needed; no production
+credentials were used. Regression testing and measured load did not overlap.
+
+The separate capacity experiment is documented in [PERFORMANCE.md](PERFORMANCE.md#phase-12c--controlled-capacity-measurements).
+Its load runs are not additional JUnit test methods. A missed latency, dropped-work
+or event-delay target is a measured capacity failure; it is distinct from a
+booking uniqueness or projection consistency failure. No application, schema,
+transaction, authentication or deployment setting was changed for Phase 12C.
+
+All **38 planned load runs completed**: 21 met their declared performance targets,
+17 missed targets under ramp/overload, and zero were skipped. Post-load correctness
+passed in all 38. Four 100-VU contention trials each retained one active hold;
+17,646 other requests returned the expected 409. Both Kafka-pause recovery trials
+committed 100 bookings during the pause and eventually projected every event.
+Six overloaded write trials had 132 client payment timeouts; the resulting
+committed bookings remained consistent. These are recorded performance failures,
+not silently excluded observations or failing Maven test methods.
+
+Two harness pilots preceded the retained matrix. The first exposed an incorrect
+verification SQL join (`bookings.payment_id` did not exist); the invariant query
+was corrected to follow `reservations.confirmed_payment_id`. The second pilot
+passed. Neither pilot is included in the 38-run comparison. Final script hashes
+are retained with the report, and the final analysis validates fault execution,
+raw dropped-iteration counts and the complete matrix. The application was unchanged.

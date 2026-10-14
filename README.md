@@ -14,8 +14,10 @@ events, Kafka publication, mock notifications, and an idempotent analytics proje
 Phase 11 runs two JVMs behind NGINX with shared state, instance metrics, and
 distributed concurrency, recovery, and performance verification. Phase 12A adds
 GitHub Actions CI; Phase 12B makes the full local Compose deployment reproducible
-from source, with pinned images and persistence/recovery checks. Later
-features are planned in [the roadmap](docs/ROADMAP.md).
+from source, with pinned images and persistence/recovery checks. Phase 12C adds
+controlled catalogue, availability, contention, paid-traffic and Kafka capacity
+measurements with retained raw evidence. Later features are planned in
+[the roadmap](docs/ROADMAP.md).
 
 ## Stack
 
@@ -234,6 +236,33 @@ payments, booking ownership, and all allocation decisions remain uncached.
 Use a dedicated Redis instance per environment; never share the namespace across
 unrelated deployments. See [HLD](docs/HLD.md#redis-catalogue-cache) for guarantees
 and [performance](docs/PERFORMANCE.md) for the reproducible comparison.
+
+## Performance and capacity evidence
+
+Phase 12C completed **38 local measured runs** comparing one/two JVMs under
+increasing offered load: **21 met declared targets and 17 missed performance
+targets**. Post-load uniqueness, inventory, payment and event-projection checks
+passed in all 38. Four 100-user hot-seat runs each produced exactly one hold.
+Both ten-second Kafka-pause trials preserved bookings and recovered projections.
+
+At the repeated mixed workload of 15 iterations/s (135 offered HTTP/s), one/two
+JVMs averaged **111.56/134.68 HTTP/s** and **1,857.50/158.42 ms p95**. These are
+run-level means on a shared five-CPU host with one CPU quota per JVM; only the
+two-JVM mixed configuration met all targets at that rate. Higher loads exposed
+CPU/pool pressure, Redis-client timeouts and payment-response timeouts. These
+short experiments do not establish production capacity or linear scaling.
+
+```bash
+./mvnw clean verify
+python3 performance/phase12c/run.py --output performance/results/my-phase12c
+python3 performance/phase12c/analyse.py performance/results/my-phase12c --require-complete
+```
+
+The runner requires Docker/Compose and Python 3; charts additionally need
+matplotlib. It creates and removes only its own disposable infrastructure.
+See [methodology and all results](docs/PERFORMANCE.md#phase-12c--controlled-capacity-measurements),
+[reproduction instructions](performance/phase12c/README.md), and
+[machine-readable evidence](performance/results/2026-10-14-phase12c/report.json).
 
 ## Health and errors
 
@@ -461,6 +490,8 @@ all 20 transactions to contend at PostgreSQL. Migration checks call Flyway again
 and verify that migration history and application data remain unchanged.
 
 See [TESTING.md](docs/TESTING.md) for execution details and remaining weaknesses.
+The Phase 12C full Maven rerun passed **251 tests: 0 failures, 0 errors, 0 skipped**.
+The following historical Phase 11 results retain their original scope:
 The final Phase 11 Maven rerun passed **251 tests: 0 failures, 0 errors, 0 skipped**.
 Separate real-container checks passed **13 end-to-end cases** (12-case suite plus
 one added in-flight payment check), and **12 k6 measured runs** passed their
@@ -581,7 +612,8 @@ Real provider integration, automated reconciliation, refunds and payment
 operations need a later phase. Redis metadata caching and Kafka booking-event
 processing are implemented. Delivery work still includes
 production deployment/backup procedures. CI and reproducible local source-built
-Compose deployment are implemented through Phase 12B. See the [roadmap](docs/ROADMAP.md).
+Compose deployment are implemented through Phase 12B; Phase 12C adds measured
+capacity evidence and documented limits. See the [roadmap](docs/ROADMAP.md).
 
 The legacy immediate-booking endpoint now returns `409`. A hold-creation retry
 also returns `409` for an allocated seat;

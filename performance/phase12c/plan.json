@@ -1,0 +1,29 @@
+{
+  "phase": "12C",
+  "warmup_seconds": 10,
+  "duration_seconds": 30,
+  "rates": {"catalogue": [200, 600, 1200], "availability": [50, 150, 400], "mixed": [5, 15, 40], "events": [10, 30, 60]},
+  "targets": {
+    "unexpected_error_rate_below": 0.001,
+    "dropped_iterations": 0,
+    "checks_pass_rate": 1,
+    "catalogue_p95_ms": 100, "catalogue_p99_ms": 250,
+    "availability_p95_ms": 250, "availability_p99_ms": 500,
+    "mixed_events_p95_ms": 1000, "mixed_events_p99_ms": 2000,
+    "contention_p95_ms": 2500, "contention_p99_ms": 5000,
+    "event_publication_p95_ms": 2000,
+    "event_projection_p95_ms": 2500,
+    "event_pending_end_per_replica": 40,
+    "recovery_drain_seconds": 120
+  },
+  "middle_rate_order": [1, 2, 2, 1],
+  "other_rate_order": [1, 2],
+  "contention_vus": 100,
+  "contention_order": [1, 2, 2, 1],
+  "kafka_recovery_rate": 10,
+  "kafka_pause_start_seconds": 5,
+  "kafka_pause_duration_seconds": 10,
+  "generator_cpu_limit": 1,
+  "generator_memory_mib": 768,
+  "notes": ["Rates are iterations/second; catalogue and availability use one HTTP request per iteration, mixed nine, events three.", "Targets are local experiment acceptance limits, not production SLAs.", "Capacity is bounded by measured rates and 30-second windows; repeat middle rates and report unbracketed limits honestly."]
+}
