@@ -1,10 +1,54 @@
 # Integration and security verification
 
-The current suite verifies Phases 1–10, including payment-gated bookings, Redis
-catalogue caching, and Kafka booking events. Historical phase results are retained
-below; later sections record Phase 10 and Phase 11 verification. Database/concurrency tests
-use PostgreSQL Testcontainers; cache and messaging tests additionally use isolated
-Redis and Kafka containers respectively.
+The current suite verifies the implemented application through Phase 12D. Phase
+12E changes documentation only and reruns regression and demo checks. Historical
+phase results remain below; they are not additive to the current suite total.
+Database/concurrency tests use PostgreSQL Testcontainers; cache and messaging
+suites also use real isolated Redis and Kafka containers.
+
+## Start here: test types and commands
+
+| Coverage | Actual source | What it establishes |
+| --- | --- | --- |
+| Focused unit tests | [ObservabilityTests](../src/test/java/com/example/Tbooker/config/ObservabilityTests.java) | Correlation filter/MDC cleanup, safe failure counters and log throttling without a database |
+| Configuration tests | [JwtConfigurationTests](../src/test/java/com/example/Tbooker/config/JwtConfigurationTests.java) | Valid/invalid signing configuration through a small Spring context |
+| MVC slice | [HealthControllerTests](../src/test/java/com/example/Tbooker/controller/HealthControllerTests.java) | Health routing and security wiring; not persistence coverage |
+| PostgreSQL integration | [BookingIntegrationTests](../src/test/java/com/example/Tbooker/BookingIntegrationTests.java), [ReservationIntegrationTests](../src/test/java/com/example/Tbooker/ReservationIntegrationTests.java) | Real SQL constraints, ownership, expiration, transaction rollback and migration behavior |
+| HTTP contention | [BookingConcurrencyIntegrationTests](../src/test/java/com/example/Tbooker/BookingConcurrencyIntegrationTests.java) | Three repetitions with 20 independent requests and observed database lock waiters |
+| Payment idempotency | [PaymentIntegrationTests](../src/test/java/com/example/Tbooker/PaymentIntegrationTests.java) | Replays, concurrent results, receipt verification, financial-success retention and reconciliation |
+| Redis integration | [CatalogueCacheIntegrationTests](../src/test/java/com/example/Tbooker/CatalogueCacheIntegrationTests.java) | Hits/misses, after-commit invalidation, rollback, TTL, corruption/outage fallback and uncached availability |
+| Kafka integration | [BookingEventsIntegrationTests](../src/test/java/com/example/Tbooker/BookingEventsIntegrationTests.java), [MessagingRecoveryIntegrationTests](../src/test/java/com/example/Tbooker/MessagingRecoveryIntegrationTests.java) | Outbox atomicity, lease recovery, duplicate effects, listener retry/DLT, broker outage/startup recovery |
+| Security and operations | [SecurityIntegrationTests](../src/test/java/com/example/Tbooker/SecurityIntegrationTests.java), [OperationalSecurityIntegrationTests](../src/test/java/com/example/Tbooker/OperationalSecurityIntegrationTests.java) | Real signed JWTs, owner boundaries, validation, body limits, database errors and secret-safe responses |
+| Two actual JVMs and proxy | [multi_instance.py](../verification/multi_instance.py) | 100 contenders across both backends, process/broker/cache faults, consumer groups and acknowledgment/crash recovery |
+| Deployment persistence | [deployment.py](../verification/deployment.py) | Clean volumes, migrations, restart/outage recovery and persisted committed bookings |
+| Capacity experiments | [Phase 12C runner](../performance/phase12c/README.md) | HTTP/resource/event measurements and post-load invariants; performance misses remain reported |
+
+Use a Java 21 JDK and a working Docker daemon with access to image registries and
+Maven dependencies. No running developer database is required. Tests inject
+isolated connection settings and ephemeral signing keys; do not pass production
+credentials. Missing Docker is a visible failure, not an automatic skip.
+
+```bash
+./mvnw clean verify
+# A focused rerun is narrower coverage, not a replacement for regression:
+./mvnw -Dtest=BookingConcurrencyIntegrationTests,PaymentIntegrationTests test
+# Separate from Maven/CI; each script creates and destroys only its own project:
+python3 verification/multi_instance.py --output /tmp/tbooker-distributed.json
+python3 verification/deployment.py --output /tmp/tbooker-deployment.json
+```
+
+Maven emits `target/surefire-reports/TEST-*.xml` and builds the executable JAR.
+Tests deliberately provoking 4xx/5xx responses count as passing only when their
+assertions and final database invariants pass. Mockito is available, but a mocked
+database is not used to establish allocation or event concurrency guarantees.
+
+[CI](../.github/workflows/ci.yml) runs wrapper `clean verify` on Java 21 and a
+Docker-capable Ubuntu runner for PRs targeting `main` and pushes to `main`. Failed
+tests fail the job; Surefire/Failsafe reports are uploaded on failure. CI does not
+invoke the Compose failure runners or k6 workloads. The merged Phase 12D commit
+`77966ec` has a [confirmed successful GitHub run](https://github.com/Avnish666/Tbooker/actions/runs/38573607657).
+Check the current PR's CI run separately; local verification is not a GitHub
+Actions result.
 
 ## Implementation review
 
@@ -774,3 +818,41 @@ dependency changes followed this lookup, so the regression results above still
 apply. GitHub Actions, production TLS/HA,
 load capacity under the new timeouts, backup restoration, multi-host partitions
 and real payment recovery were not verified by these checks.
+
+
+## Phase 12E portfolio verification — 2026-10-14 UTC
+
+This documentation change starts from Phase 12D merge `77966ec`. No application,
+test, migration, image or runtime configuration source was changed. The full
+Maven wrapper `clean verify` finished at `2026-10-14T13:47:56Z`: **263 passed,
+0 failures, 0 errors, 0 skipped**, across 15 suites. Java 21 and real
+PostgreSQL/Redis/Kafka Testcontainers were available. The exact cloud command and
+XML report hashes are retained in [Maven evidence](../verification/results/2026-10-14-phase12e-maven.json).
+The environment needed its existing Maven settings/dependency cache overrides;
+these are not required for the normal developer command.
+
+The ten labeled Bash blocks in [DEMO](DEMO.md) were executed in order against a
+fresh, privately configured UUID Compose project. **10 blocks passed, 0 failed,
+0 skipped**; these are walkthrough checks, not ten additional JUnit methods.
+The source Docker image built with the warm cache and all six services started.
+The run checked registration/login, discovered catalogue IDs, an owned hold,
+automatic paid confirmation, repeated confirmation, same-key payment replay,
+a booked-seat `409`, and an owned booking read. Redis recorded ten additional hits;
+the booking reached one published outbox event, two processed markers and a mock
+notification. Ten health requests reached two distinct NGINX upstream addresses.
+[Demo evidence](../verification/results/2026-10-14-phase12e-demo.json) records statuses
+and the exact guide hash. Only runner-owned disposable volumes were removed.
+
+Local documentation verification checked relative links/heading anchors, Bash
+syntax, Mermaid parsing/rendering and the CI workflow with actionlint. Counts,
+versions and source hashes are in [documentation evidence](../verification/results/2026-10-14-phase12e-documentation.json).
+The initial link/diagram checks caught two old README anchors and a Mermaid
+sequence separator; both were corrected. An initial smoke harness fed the Bash
+program through stdin, which a container exec consumed; execution from a script
+file fixed the harness. The complete final walkthrough above then passed.
+
+The 14 distributed failure scenarios and eight deployment/recovery scenarios were
+**not rerun in this documentation-only phase**; their Phase 12D results remain
+separately linked above. No new performance load was run. The summary reuses the
+verified Phase 12C evidence and labels Phase 9's cache experiment separately.
+No claim is made about current GitHub PR checks until an actual run reports it.

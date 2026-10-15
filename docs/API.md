@@ -290,7 +290,7 @@ application does not define a uniform custom contract for every unhandled server
 failure. Database/internal stack traces are not included in the explicit error
 responses above.
 
-Examples after [local setup](../README.md#local-setup):
+Examples after [local setup](../README.md#quick-start-the-complete-stack):
 
 ```bash
 # 400: nonpositive path ID

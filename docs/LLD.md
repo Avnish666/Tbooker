@@ -1,5 +1,7 @@
 # Low-level design
 
+For a shorter interview walkthrough, start with the [five design diagrams](DIAGRAMS.md).
+
 The implementation lives under `com.example.Tbooker`. It uses controllers,
 concrete service classes, Spring Data repository interfaces, JDBC repositories,
 JPA entities, DTO records, centralized exceptions, Spring Security configuration,

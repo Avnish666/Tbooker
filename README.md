@@ -1,721 +1,263 @@
-# Tbooker
+# Tbooker — Movie Ticket Booking Backend
 
-A Movie Ticket Booking System built as a Java modular monolith. Phases 1–3
-provide the application foundation, show catalogue, and immediate confirmed
-bookings with database concurrency protection. Phase 4 verifies integration,
-rollback, and concurrent booking requests; Phase 5 documents the implemented
-design. Phase 6 adds BCrypt registration/login, JWT authentication, roles, and
-booking ownership. Phase 7 adds five-minute seat reservations, expiry, owner-only
-confirmation/cancellation, and repeatable confirmation. Phase 8 adds idempotent
-mock UPI/Card payments and requires verified payment for new bookings. Phase 9
-adds optional Redis caching for public catalogue metadata, PostgreSQL fallback,
-and reproducible k6 measurements. Phase 10 adds transactional-outbox booking
-events, Kafka publication, mock notifications, and an idempotent analytics projection.
-Phase 11 runs two JVMs behind NGINX with shared state, instance metrics, and
-distributed concurrency, recovery, and performance verification. Phase 12A adds
-GitHub Actions CI; Phase 12B makes the full local Compose deployment reproducible
-from source, with pinned images and persistence/recovery checks. Phase 12C adds
-controlled catalogue, availability, contention, paid-traffic and Kafka capacity
-measurements with retained raw evidence. Phase 12D adds request limits, correlated
-structured logs, bounded database waits, operational metrics and a recovery runbook.
-Later features are planned in
-[the roadmap](docs/ROADMAP.md).
+A Java 21 / Spring Boot backend that explores a deceptively hard problem: **how do
+multiple users and application instances safely compete for the same seat?**
+Tbooker combines PostgreSQL reservation transactions, verified mock payments,
+Redis catalogue caching, and durable Kafka events in a modular monolith. It is a
+backend engineering portfolio project; there is no frontend or real money movement.
 
-## Stack
+**Start here:** [5–10 minute demo](docs/DEMO.md) · [Design diagrams](docs/DIAGRAMS.md) ·
+[Performance summary](docs/PERFORMANCE_SUMMARY.md) · [Resume and interview guide](docs/RESUME.md)
 
-- Java 21 and the checked-in Maven wrapper
-- Spring Boot 3.5.16 (stable, Java 21 compatible, with JUnit 5)
-- Spring MVC, Validation, Data JPA, Actuator, and Flyway
-- Spring Security resource server, BCrypt, and Nimbus JOSE + JWT 10.10
-- PostgreSQL 17, Redis 7.4, Spring Cache/Data Redis with Lettuce
-- Spring for Apache Kafka 3.3.16; Apache Kafka 3.9.1 in KRaft mode
-- Docker Compose, JUnit 5, Mockito, Testcontainers, and k6 load scripts
+## What it demonstrates
 
-The original application package, `com.example.Tbooker`, is retained. Authentication
-and PostgreSQL-backed temporary holds and mock payments are implemented. Real
-providers and real email remain future work. Redis caches catalogue DTOs only;
-Kafka handles asynchronous booking facts without participating in booking commits.
+- Five-minute seat holds with owner-only view, cancellation and confirmation;
+  row locks, conditional updates and SQL constraints protect allocation across JVMs.
+- BCrypt registration, signed JWT login, stateless Spring Security, and owner-scoped queries.
+- UPI/Card **mock** payment strategies, persistent receipts, idempotent initiation,
+  independently verified results, and recovery of paid-but-unconfirmed reservations.
+- Cache-aside Redis for public catalogue DTOs, after-commit invalidation, finite TTLs,
+  and PostgreSQL fallback. **Seat availability is always read from PostgreSQL.**
+- A transactional outbox, leased publishers, Kafka retry/dead-letter handling, and
+  idempotent notification/analytics database projections.
+- Two identical application containers behind NGINX, shared durable state,
+  reproducible Docker builds, CI, request correlation and operational metrics.
 
-## Current functionality and architecture
+The retained two-JVM contention test sent **100 simultaneous hold requests: one
+201, ninety-nine 409s**, followed by one permanent booking. The Maven regression
+suite has **263 passing tests**. See [verification evidence](docs/TESTING.md) for
+scope, dates, commands and limitations; performance targets are reported separately.
 
-- List movies, theatres, and shows; inspect their details using cached DTO APIs.
-- Read seat inventory directly from PostgreSQL, including effective hold expiry.
-- Register and log in, then confirm one show seat using the authenticated identity.
-- Hold an available seat for five minutes, inspect it, pay through a mock provider, or cancel the hold.
-- Initiate UPI/Card payment with an owner-scoped idempotency key; read your payment status/history.
-- Confirm only with verified success; retain successful payment if booking needs retry or reconciliation.
-- Reclaim expired holds safely even when scheduled cleanup is delayed.
-- List and retrieve only your own bookings; ADMIN has no ownership bypass.
-- Reject competing bookings using an atomic availability update and a unique
-  booking constraint; roll back the seat claim if booking insertion fails.
-- Persist one confirmation event with each new booking; publish with recoverable database leases.
-- Consume in independent notification/analytics groups with durable deduplication and a DLT.
-- Apply Flyway migrations, optionally seed a development catalogue, and expose
-  HTTP health plus database-aware readiness.
-- Verify integration against real PostgreSQL, including 20 contending HTTP
-  booking requests repeated three times with fresh fixtures.
-- Run two independent JVMs behind NGINX; verify 100 distributed hold contenders,
-  process termination/restart, optional-service outages, and Kafka group membership.
-
-The component diagram expands one replica. In scaled mode, NGINX selects
-`app-a` or `app-b` before Spring Security; both run this same object graph.
-See the [deployment diagram](docs/SCALING.md#deployment-and-request-path).
+## Architecture
 
 ```mermaid
 flowchart LR
-    Client[HTTP client] --> Security[Spring Security and JWT validation]
-    subgraph App[Inside each Spring Boot replica]
-        Security --> Controllers[Controllers and DTOs]
-        Controllers --> Catalogue[Catalogue services via Spring Cache]
-        Catalogue --> Reader[CatalogueReader - cache miss or seat reads]
-        Reader --> Repos
-        Controllers --> Services[Booking and reservation services]
-        Controllers --> Payments[PaymentService and result processor]
-        Payments --> Tx[PaymentTransactions]
-        Tx --> Repos
-        Payments --> Registry[PaymentStrategyRegistry]
-        Registry --> Gateway[Mock UPI and Card strategies]
-        Gateway --> Ledger[MockGatewayStore - separate transaction]
-        Payments --> Services
-        Cleanup[ReservationCleanup scheduler] --> Inventory[SeatInventoryService]
-        Services --> Inventory
-        Inventory --> Repos
-        Services --> Recorder[BookingEventRecorder - same booking transaction]
-        Recorder --> Outbox[(PostgreSQL outbox)]
-        Publisher[Leased OutboxPublisher] --> Outbox
-        Consumers[Notification and analytics processors] --> Projections[(PostgreSQL projections and deduplication)]
-        Services --> Repos[Spring Data JPA repositories]
-        Repos --> Persistence[Hibernate and HikariCP]
-        Flyway[Flyway startup migrations]
+    C[HTTP client] --> N[NGINX]
+    N --> A[Spring Boot A]
+    N --> B[Spring Boot B]
+    A & B --> P[(PostgreSQL)]
+    A & B --> R[(Redis catalogue cache)]
+    subgraph JVMs[Background components inside both JVMs]
+        E[Reservation cleanup]
+        O[Outbox publishers]
+        L[Notification and analytics listeners]
     end
-    Catalogue --> Redis[(Optional Redis DTO cache)]
-    Publisher --> Kafka[(Kafka booking-confirmed topic)]
-    Kafka --> Consumers
-    Consumers --> DLT[(Dead Letter Topic)]
-    Persistence --> DB[(PostgreSQL)]
-    Ledger --> DB
-    Flyway --> DB
+    E --> P
+    O <-->|leases and status| P
+    O --> K[Kafka]
+    K --> L
+    L --> P
 ```
 
-The repository has one Maven module and one deployable application, organized
-by technical layers. Catalogue and booking responsibilities are separate
-services; domain module boundaries are not enforced by a module framework.
-The original Compose workflow runs shared services for a host Java process.
-`compose.scaled.yaml` separately runs NGINX, two app containers, and shared services;
-see [the deployment diagram and setup](docs/SCALING.md).
+One Maven application uses Controller → Service → Repository layering, constructor
+injection and DTOs. There are no independently deployed business microservices.
+PostgreSQL owns inventory, payment and event state; Redis is disposable. Kafka
+availability does not gate booking commits. Both replicas run background work;
+database locks/leases and consumer groups coordinate them.
 
-| Document | Contents |
+[HLD](docs/HLD.md) · [LLD](docs/LLD.md) · [Database](docs/DATABASE.md) ·
+[Design decisions](docs/DECISIONS.md) · [Five walkthrough diagrams](docs/DIAGRAMS.md)
+
+## Technology
+
+| Area | Implementation |
 | --- | --- |
-| [HLD](docs/HLD.md) | Requirements, architecture, request flows, bottlenecks, and scaling limits. |
-| [LLD](docs/LLD.md) | Class and booking sequence diagrams, responsibilities, interfaces, and actual patterns. |
-| [Database](docs/DATABASE.md) | ER diagram, column dictionary, constraints, indexes, and migrations. |
-| [API](docs/API.md) | Routes, DTO fields, examples, validation, and errors. |
-| [Runbook](docs/RUNBOOK.md) | Health, metrics, logs, pool/lock diagnosis, outbox/consumer checks, and safe recovery. |
-| [Decisions](docs/DECISIONS.md) | Rationale, alternatives, and trade-offs. |
-| [Security](docs/SECURITY.md) | Authentication flow, filter chain, ownership, roles, setup, and limitations. |
-| [Booking](docs/BOOKING.md) | Detailed race-condition and transaction explanation. |
-| [Testing](docs/TESTING.md) | Executed test evidence, concurrency protocol, and limitations. |
-| [Messaging](docs/MESSAGING.md) | Outbox, consumers, retries, DLT replay, configuration, and operational limits. |
-| [Performance](docs/PERFORMANCE.md) | Cache and one/two-JVM k6 comparisons, measured results, and limits. |
-| [Deployment](docs/DEPLOYMENT.md) | Fresh-clone startup, environment contract, migrations, recovery, and shutdown. |
-| [Scaling](docs/SCALING.md) | Two-JVM Compose deployment, NGINX, failover, monitoring, and disposable test runners. |
-| [Roadmap](docs/ROADMAP.md) | Completed phases and future milestones. |
+| Application | Java 21, Spring Boot 3.5.16, Maven wrapper 3.9.16 |
+| Persistence | Spring Data JPA, PostgreSQL 17, Flyway V1–V7, UTC `Instant` timestamps |
+| Security | Spring Security resource server, Nimbus JWT, BCrypt cost 12 |
+| Cache and events | Spring Cache / Redis 7.4, Spring Kafka / Kafka 3.9, PostgreSQL outbox |
+| Verification | JUnit 5, Spring Boot Test, Mockito, PostgreSQL/Redis/Kafka Testcontainers, Python Compose checks, k6 |
+| Operations | Multi-stage Dockerfile, Docker Compose, NGINX, Actuator/Micrometer, GitHub Actions |
 
-## Local two-instance deployment
+Container versions and digests are fixed in [Compose](compose.scaled.yaml) and the
+[Dockerfile](Dockerfile). These pins need deliberate maintenance; see the
+[dependency review](docs/SECURITY.md#dependency-review-and-unresolved-advisories).
 
-Install Docker Engine/Desktop with Linux containers, Compose v2.24+, and BuildKit.
-Budget 6–8 GiB for Docker plus host/build overhead. No host Java or Maven is needed
-for this path: the multi-stage Dockerfile builds from source using Java 21 and
-the checked-in Maven wrapper. It packages without tests; verification is a
-separate `./mvnw clean verify` step or CI check for the same commit.
+## Quick start: the complete stack
 
-From a fresh clone (preserve an existing private `.env`):
+Prerequisites: Git, Docker Engine/Desktop with Compose v2, access to image/Maven
+registries, and roughly **6–8 GiB available Docker memory** for build/startup.
+The application is built inside Docker; a host JDK is only needed for Maven tests
+or host development. Run commands in the repository root.
 
 ```bash
-cp .env.example .env
-# Edit .env: set DB_PASSWORD and a random Base64 JWT_SECRET.
-# Generate a key locally with: openssl rand -base64 32
-# Optional: uncomment SPRING_PROFILES_ACTIVE=dev for sample catalogue data.
+git clone https://github.com/Avnish666/Tbooker.git
+cd Tbooker
+# For an existing clone, keep your existing .env.
+cp -n .env.example .env
+```
+
+Edit `.env`: set a private `DB_PASSWORD` and a random Base64 `JWT_SECRET` generated
+locally with `openssl rand -base64 32`. Uncomment `SPRING_PROFILES_ACTIVE=dev` on a
+**dedicated development database** to seed one movie, theatre, screen, show and
+A1–A8 seats. Sample users have no passwords; register your own account.
+
+```bash
 docker compose -f compose.scaled.yaml config --quiet
 docker compose -f compose.scaled.yaml up -d --build --wait --wait-timeout 240
 docker compose -f compose.scaled.yaml ps
-curl --fail http://localhost:8080/actuator/health/readiness
-curl --fail http://localhost:8080/api/shows
-# Stop containers/network, retaining data:
+curl --fail http://127.0.0.1:8080/actuator/health/readiness
+curl --fail http://127.0.0.1:8080/api/shows
+
+# Stop containers and network, keeping PostgreSQL and Kafka volumes:
 docker compose -f compose.scaled.yaml down
 ```
 
-Only NGINX publishes a host port (loopback `8080`, configurable via `LB_PORT`).
-Two JVMs share PostgreSQL, Redis, and Kafka on an internal Docker network.
-Flyway serializes V1–V7 startup migrations; named PostgreSQL/Kafka volumes survive
-restarts and `down`. Redis is disposable. Do not remove volumes to troubleshoot.
-Without `dev`, the schema initializes with an empty catalogue; register a new
-account to exercise authentication (sample accounts have no password).
+The default URL is **http://127.0.0.1:8080**. Only NGINX is host-facing in this
+stack; PostgreSQL, Redis, Kafka and both JVMs use the private Compose network.
+Flyway runs during application startup and serializes migrations through the
+shared database. Persistent volumes survive `down`; do not use `down -v` on data
+you want to keep. Changing `.env` does not change an existing database password.
 
-See [DEPLOYMENT.md](docs/DEPLOYMENT.md) for the complete environment contract,
-health/log/rebuild commands, migration strategy, resource requirements, shutdown,
-common errors, and recovery limits. [Executed deployment checks](docs/TESTING.md#phase-12b-deployment-verification--2026-10-13)
-include restart persistence and optional-service outages. [SCALING.md](docs/SCALING.md) explains NGINX
-passive failure detection and distributed coordination. The original host Java
-workflow below remains separate; do not combine the two Compose files.
+| Configuration | Required value or default |
+| --- | --- |
+| `DB_PASSWORD` | Required private local database password; blank fails validation |
+| `JWT_SECRET` | Required Base64 encoding of at least 32 random bytes; identical in both replicas |
+| `DB_NAME` / `DB_USERNAME` | `tbooker` / `tbooker` |
+| `JWT_ISSUER` / `JWT_AUDIENCE` / `JWT_TTL` | `tbooker` / `tbooker-api` / `PT15M` |
+| `SPRING_PROFILES_ACTIVE` | Unset: schema only; `dev`: repeatable sample catalogue |
+| `LB_BIND_ADDRESS` / `LB_PORT` | `127.0.0.1` / `8080` |
+| `CATALOGUE_CACHE_ENABLED` / `MESSAGING_ENABLED` | Both `true`; optional infrastructure can fail without authorizing stale inventory |
+| `PAYMENTS_MOCK_UPI_OUTCOME` / `PAYMENTS_MOCK_CARD_OUTCOME` | `SUCCESS`; mock-only alternatives `FAILED`, `PENDING` |
 
-## Local setup
+[`.env.example`](.env.example) lists all supported settings, including pool limits,
+timeouts, cache TTLs, consumer groups and worker timings. Keep `.env` private and
+untracked. Scaled Compose overrides host-oriented connection settings with
+`postgres:5432`, `redis:6379`, `kafka:19092`, and app port 8080. Use
+`config --quiet`, not rendered environment dumps, when checking configuration.
 
-Install a Java 21 **JDK**, Docker Engine or Docker Desktop, and Docker Compose v2.
-Run commands from the repository root. Use `bash mvnw` on Unix, or `mvnw.cmd` on
-Windows; no global Maven installation is required.
+For one application on your host, install **JDK 21**, use the base Compose file
+for infrastructure, and export your own trusted, shell-compatible `.env`:
 
 ```bash
-cp .env.example .env
-# Edit .env: choose DB_PASSWORD and set JWT_SECRET to a fresh random Base64 key.
-# Generate the JWT_SECRET value with: openssl rand -base64 32
 docker compose up -d --wait postgres redis kafka
-
-# Bash: Spring Boot does not automatically read .env.
 set -a
 source .env
 set +a
-bash mvnw spring-boot:run
+./mvnw spring-boot:run
 ```
 
-Keep `.env` private. Its values configure the host Java process and the database
-containers. Redis is disposable, has no persistent volume, and uses a 128 MiB
-LRU memory limit. Kafka persists logs in `kafka_data` and uses a single KRaft node.
-Published host ports bind to loopback; Kafka uses PLAINTEXT and the Compose Redis has no password
-and is for local development only. Use shell-compatible assignments (quote values containing special
-characters). PostgreSQL is exposed only on loopback. Its data lives in the
-`postgres_data` named volume and survives `docker compose down`.
+Choose this workflow or the scaled stack; their default HTTP ports overlap.
+[Deployment guide](docs/DEPLOYMENT.md) covers exact rebuild/log/health commands,
+resources, migration safety, common errors and persistence. The
+[runbook](docs/RUNBOOK.md) covers incidents and recovery.
 
-If port 5432 is occupied, change `DB_PORT` in `.env`. `SERVER_PORT` defaults to
-8080. Credentials passed when PostgreSQL first initializes are retained in the
-volume; changing `.env` later does not change database users or passwords.
+## API and request lifecycle
 
-| Variable | Default / purpose |
-| --- | --- |
-| `DB_HOST` | `localhost`; database hostname seen by the host application |
-| `DB_PORT` | `5432`; Compose host port and application database port |
-| `DB_NAME` | `tbooker` |
-| `DB_USERNAME` | `tbooker` |
-| `DB_PASSWORD` | Required for local database setup; no production secret is provided |
-| `SERVER_PORT` | `8080` |
-| `SPRING_DATASOURCE_URL` | Optional full JDBC URL, overrides the `DB_*` URL components |
-| `SPRING_DATASOURCE_USERNAME` | Optional override of `DB_USERNAME` |
-| `SPRING_DATASOURCE_PASSWORD` | Optional override of `DB_PASSWORD` |
-| `SPRING_PROFILES_ACTIVE` | Unset normally; `dev` opts into sample data on a dedicated development database |
-| `JWT_SECRET` | Required Base64 signing key containing at least 32 random bytes; no default |
-| `JWT_ISSUER` | `tbooker` |
-| `JWT_AUDIENCE` | `tbooker-api` |
-| `JWT_TTL` | `PT15M`; supported range is one minute to one hour |
-| `REDIS_HOST` / `REDIS_PORT` | `localhost` / `6379` |
-| `REDIS_USERNAME` / `REDIS_PASSWORD` | Blank for local Compose; inject for a secured external Redis |
-| `REDIS_CONNECT_TIMEOUT` / `REDIS_COMMAND_TIMEOUT` | `200ms` each |
-| `CATALOGUE_CACHE_ENABLED` | `true`; `false` uses a no-op cache for comparison or operations |
-| `CACHE_METADATA_TTL` / `CACHE_METADATA_LIST_TTL` | `PT10M` / `PT5M` |
-| `CACHE_SHOW_TTL` / `CACHE_SHOW_LIST_TTL` | `PT1M` / `PT30S` |
-| `KAFKA_PORT` / `KAFKA_BOOTSTRAP_SERVERS` | `9092` / `localhost:9092`; change both when using another local port |
-| `MESSAGING_ENABLED` | `true`; disabling workers still records durable outbox events |
-| `BOOKING_EVENTS_TOPIC` / `BOOKING_EVENTS_DLT` | `tbooker.booking-confirmed.v1` / same name plus `.DLT` |
-| `BOOKING_TOPIC_PARTITIONS` / `BOOKING_TOPIC_REPLICAS` | `3` / `1` (local single-broker setup) |
-| `OUTBOX_BATCH_SIZE` / `OUTBOX_LEASE` | `20` / `PT30S` |
-| `OUTBOX_RETRY_INITIAL` / `OUTBOX_RETRY_MAX` | `PT1S` / `PT1M` |
-
-For a managed database, inject the `SPRING_DATASOURCE_*` variables and JWT key securely.
-Do not store real credentials in Git. Compose provisions a local development
-database; it is not a production database deployment configuration.
-
-## Catalogue caching
-
-Redis uses cache-aside: a hit returns a typed JSON DTO without opening a database
-transaction; a miss reads PostgreSQL in a short read transaction and caches the
-result with a finite TTL. Movie/theatre details live for ten minutes, their lists
-for five, show details for one, and show lists for thirty seconds. Relevant JPA
-changes evict affected entries after commit. Native SQL changes, failed
-invalidation, and in-flight stale reads can remain visible until TTL expiry.
-
-Redis errors fall back to PostgreSQL and increment cache-error counters. An outage
-can add timeout latency and database load; there is no circuit breaker or
-distributed miss coalescing. Readiness does not require Redis. Inventory, holds,
-payments, booking ownership, and all allocation decisions remain uncached.
-Use a dedicated Redis instance per environment; never share the namespace across
-unrelated deployments. See [HLD](docs/HLD.md#redis-catalogue-cache) for guarantees
-and [performance](docs/PERFORMANCE.md) for the reproducible comparison.
-
-## Performance and capacity evidence
-
-Phase 12C completed **38 local measured runs** comparing one/two JVMs under
-increasing offered load: **21 met declared targets and 17 missed performance
-targets**. Post-load uniqueness, inventory, payment and event-projection checks
-passed in all 38. Four 100-user hot-seat runs each produced exactly one hold.
-Both ten-second Kafka-pause trials preserved bookings and recovered projections.
-
-At the repeated mixed workload of 15 iterations/s (135 offered HTTP/s), one/two
-JVMs averaged **111.56/134.68 HTTP/s** and **1,857.50/158.42 ms p95**. These are
-run-level means on a shared five-CPU host with one CPU quota per JVM; only the
-two-JVM mixed configuration met all targets at that rate. Higher loads exposed
-CPU/pool pressure, Redis-client timeouts and payment-response timeouts. These
-short experiments do not establish production capacity or linear scaling.
-
-```bash
-./mvnw clean verify
-python3 performance/phase12c/run.py --output performance/results/my-phase12c
-python3 performance/phase12c/analyse.py performance/results/my-phase12c --require-complete
-```
-
-The runner requires Docker/Compose and Python 3; charts additionally need
-matplotlib. It creates and removes only its own disposable infrastructure.
-See [methodology and all results](docs/PERFORMANCE.md#phase-12c--controlled-capacity-measurements),
-[reproduction instructions](performance/phase12c/README.md), and
-[machine-readable evidence](performance/results/2026-10-14-phase12c/report.json).
-
-## Health and errors
-
-```bash
-curl --fail http://localhost:8080/api/v1/health
-curl --fail http://localhost:8080/actuator/health
-curl --fail http://localhost:8080/actuator/health/readiness
-```
-
-`GET /api/v1/health` returns `{"status":"UP"}` and checks that HTTP handling is
-available. It has no business logic or persistence access, so it does not need a
-pass-through service. Actuator readiness includes the database check;
-liveness does not depend on database availability. Overall health also includes
-Kafka and Redis; `/actuator/health/messaging` and `/actuator/health/cache` check
-them independently. Neither failure makes booking readiness fail. Health is public
-with details hidden; metrics require
-an ADMIN JWT.
-
-Security failures and Spring MVC errors use RFC 9457 Problem Details.
-Missing shows return centralized `404` Problem Details; invalid IDs return `400`.
-The application does not define a custom error contract for every unhandled
-server failure; see [API error behavior](docs/API.md#errors).
-
-Bodies are limited to 16 KiB at NGINX and the JVM, including chunked requests.
-Handled application errors carry a safe `correlationId`, matching `X-Request-ID` and ECS
-JSON logs. Expected hold conflicts are counted without stack traces. Metrics cover
-HTTP rates/statuses/local p95, JVM/GC, Hikari, reservation conflicts, payment
-failures, cache availability, outbox backlog/publish failures and consumer/DLT
-activity. Use [the runbook](docs/RUNBOOK.md) for exact names and commands; metrics
-are per instance, reset on restart, and have no durable history or alert stack.
-
-Pool acquisition, PostgreSQL locks and statements default to 3, 5 and 15 seconds.
-Configure `DB_POOL_TIMEOUT_MS`, `DB_LOCK_TIMEOUT` and `DB_STATEMENT_TIMEOUT` in both
-replicas. Limits apply to individual operations and startup migrations, not an
-end-to-end transaction deadline. Check persisted outcomes before retrying a 503 or
-timeout; no automatic write replay was added. See [security findings and limits](docs/SECURITY.md#phase-12d-review-verified-controls-and-confirmed-gaps).
-
-## Development catalogue and API examples
-
-To load sample data, opt in on a **dedicated development database**:
-
-```bash
-# With the database settings already exported:
-SPRING_PROFILES_ACTIVE=dev bash mvnw spring-boot:run
-# Or: java -jar target/Tbooker-0.0.1-SNAPSHOT.jar --spring.profiles.active=dev
-```
-
-The `dev` profile adds `db/dev` to Flyway's locations. It seeds one movie, one
-theatre, one screen, one show, seats A1–A8, eight available show seats, and two
-sample users. The show starts at `2030-01-01T18:00:00Z`; this fixed instant keeps
-the sample reproducible. IDs are generated, so read them from the API. The sample
-users have no password and cannot log in; register a new account as shown below.
-
-```bash
-curl --fail --silent http://localhost:8080/api/movies
-curl --fail --silent http://localhost:8080/api/theatres
-curl --fail --silent http://localhost:8080/api/shows
-# Set SHOW_ID to an id returned by that response (1 on a fresh sample database).
-SHOW_ID=1
-curl --fail --silent "http://localhost:8080/api/shows/$SHOW_ID"
-curl --fail --silent "http://localhost:8080/api/shows/$SHOW_ID/seats"
-
-# Error examples: 404 for an absent show, 400 for an invalid ID.
-curl -i http://localhost:8080/api/shows/9223372036854775807
-curl -i http://localhost:8080/api/shows/0
-```
-
-Show response (IDs are illustrative):
-
-```json
-{
-  "id": 1,
-  "movieId": 1,
-  "movieTitle": "The Sample Adventure",
-  "durationMinutes": 120,
-  "screenId": 1,
-  "screenName": "Screen 1",
-  "theatreId": 1,
-  "theatreName": "Sample Cinema",
-  "city": "Bengaluru",
-  "startTime": "2030-01-01T18:00:00Z"
-}
-```
-
-`GET /api/shows` returns an array ordered by start time, then ID. It currently
-lists all shows, including past shows; filtering and pagination are later work.
-`GET /api/shows/{showId}/seats` returns an array ordered lexically by seat number,
-then ID, containing objects such as:
-
-```json
-{"id": 1, "showId": 1, "seatId": 1, "seatNumber": "A1", "status": "AVAILABLE"}
-```
-
-Here `id` identifies the show-specific inventory row and `seatId` identifies the
-physical seat. Availability belongs to the show-specific row. An existing show
-without inventory returns `[]`; an absent show returns `404` for both detail and
-seat routes. Catalogue administration endpoints are not implemented.
-
-The development repeatable migration reuses existing sample rows and does not
-reset seat statuses. Flyway normally reruns it only when its checksum changes;
-executing its SQL again is also idempotent. Normal startup loads no sample data.
-Do not switch a seeded database between `dev` and non-dev configurations: its
-Flyway history includes the development migration. Use separate databases and
-never activate `dev` against production.
-
-## Authentication and booking API
-
-Register a local account, then log in. Use a private password of at least 12
-characters (at most 72 UTF-8 bytes). Sample users have no shared login passwords.
-
-```bash
-curl -i -X POST http://localhost:8080/api/auth/register \
-  -H 'Content-Type: application/json' \
-  --data '{"name":"Demo User","email":"demo@example.test","password":"replace-with-private-password"}'
-curl --fail -X POST http://localhost:8080/api/auth/login \
-  -H 'Content-Type: application/json' \
-  --data '{"email":"demo@example.test","password":"replace-with-private-password"}'
-
-# Copy accessToken from login. Keep it private; use actual catalogue IDs.
-TOKEN=paste-access-token-here
-SHOW_ID=1
-SHOW_SEAT_ID=5
-curl -i -X POST "http://localhost:8080/api/shows/$SHOW_ID/reservations" \
-  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  --data "{\"showSeatId\":$SHOW_SEAT_ID}"
-
-# Copy the returned reservation id. Generate this key ONCE and retain for retries.
-RESERVATION_ID=1
-PAYMENT_KEY=$(uuidgen)
-curl -i -X POST "http://localhost:8080/api/reservations/$RESERVATION_ID/payments" \
-  -H "Authorization: Bearer $TOKEN" -H "Idempotency-Key: $PAYMENT_KEY" \
-  -H 'Content-Type: application/json' --data '{"method":"UPI"}'
-
-curl -i "http://localhost:8080/api/reservations/$RESERVATION_ID/booking" -H "Authorization: Bearer $TOKEN"
-curl --fail http://localhost:8080/api/payments -H "Authorization: Bearer $TOKEN"
-curl --fail http://localhost:8080/api/bookings -H "Authorization: Bearer $TOKEN"
-```
-
-Registration returns `201` with USER role; duplicate emails return `409`. Login
-returns a short-lived Bearer token; invalid credentials return generic `401`.
-BCrypt hashes passwords and the JWT signing key comes from the environment.
-All ownership comes from the JWT subject; supplied `userId`, amount, status, or
-provider reference is rejected as an unknown input field.
-
-A hold returns `201`. A new payment attempt returns `201` and
-`Location: /api/payments/{id}`; replaying the same owner/key/reservation/method
-returns `200` and the stored current result. Different parameters on that key
-return `409`. UPI and CARD default to SUCCESS; the client never selects outcome.
-
-```json
-{"id":1,"reservationId":1,"method":"UPI","amountMinor":10000,"currency":"INR","status":"SUCCESS","confirmationStatus":"CONFIRMED","providerReference":"mock-upi-00000000-0000-0000-0000-000000000001","bookingId":1,"createdAt":"2026-10-13T05:00:00Z","updatedAt":"2026-10-13T05:00:00.010Z"}
-```
-
-Values are illustrative. Financial `status` and `confirmationStatus` are separate:
-SUCCESS/PENDING means booking needs retry; SUCCESS/RECONCILIATION_REQUIRED means
-success could not allocate this hold. FAILED/NOT_READY creates no booking. Only
-CONFIRMED has a booking ID. GETs never advance payment state. Retry the original
-key after uncertainty; do not invent another key for a pending payment.
-
-`POST /api/reservations/{id}/confirmation` can retry confirmed allocation, but an
-unpaid active hold returns `409`. The legacy immediate-booking endpoint also
-returns `409` and cannot bypass payment. Expired/cancelled holds cannot confirm;
-late successful payments remain recorded for reconciliation. Existing historical
-bookings remain readable without fabricated payment rows.
-
-Optional trusted server configuration (also in `.env.example`):
-
-| Environment variable | Default | Meaning |
+| Purpose | Routes | Access |
 | --- | --- | --- |
-| `PAYMENTS_MOCK_AMOUNT_MINOR` | `10000` | Positive integer paise, fixed INR; mock price, not seat pricing. |
-| `PAYMENTS_MOCK_UPI_OUTCOME` | `SUCCESS` | SUCCESS, FAILED, or PENDING for a new UPI receipt. |
-| `PAYMENTS_MOCK_CARD_OUTCOME` | `SUCCESS` | SUCCESS, FAILED, or PENDING for a new Card receipt. |
+| Register / login | `POST /api/auth/register`, `POST /api/auth/login` | Public |
+| Catalogue | `GET /api/movies`, `/api/theatres`, `/api/shows`, and their `/{id}` routes | Public |
+| Live availability | `GET /api/shows/{showId}/seats` | Public, uncached |
+| Hold | `POST /api/shows/{showId}/reservations` with `{"showSeatId":5}` | JWT owner |
+| View / cancel hold | `GET`, `DELETE /api/reservations/{id}` | JWT owner |
+| Mock payment | `POST /api/reservations/{id}/payments` with `{"method":"UPI"}` and `Idempotency-Key` | JWT owner |
+| Confirm / retrieve booking | `POST /api/reservations/{id}/confirmation`, `GET /api/reservations/{id}/booking` | JWT owner |
+| Histories | `GET /api/bookings`, `/api/payments`, and their `/{id}` routes | Own records only |
 
-Set one outcome to FAILED before starting to exercise a decline. Configuration
-changes affect only new mock receipts; retries retain the original operation and
-price. PENDING stays pending until trusted provider state changes; no client
-success/callback endpoint exists. No card or UPI account details are collected.
+Registration always creates `USER`. Login calls `PasswordEncoder.matches` directly
+and issues an HS256 token; it does not use an `AuthenticationManager` or
+`UserDetailsService`. The resource-server filter validates the signature, issuer,
+audience, lifetime and identity/role claims before controllers receive a `Jwt`.
+Ownership comes from `sub`, never a client `userId`. See [security](docs/SECURITY.md).
 
-All payment/booking/reservation detail reads return `404` for foreign IDs,
-including ADMIN callers. Catalogue reads stay public. Catalogue writes and the
-reserved ADMIN namespace require ADMIN, but write handlers are not implemented.
-See [API contracts](docs/API.md), [security](docs/SECURITY.md), and
-[booking transactions](docs/BOOKING.md).
+Creating a hold locks its show-seat row, samples database time **after** lock
+acquisition, expires any obsolete hold, and commits the new five-minute hold.
+The database transaction ends immediately. Confirmation requires an active owned
+hold and persisted verified payment success; it atomically commits the seat,
+booking, reservation/payment links and outbox event. Cleanup timing cannot extend
+the deadline. Confirmed seats are permanent in the supported workflow.
 
-## Database migrations
+Payment initiation commits an attempt before invoking a Spring-managed UPI/Card
+strategy. The mock provider persists a receipt; verification reloads that receipt
+independently. Financial success commits before a separate booking transaction.
+**Successful payment normally confirms automatically**; explicit confirmation is
+also safe to retry. Retry initiation with the **same key and same request** after
+an uncertain response. Success with failed booking remains visible for retry or
+reconciliation; there is no automatic refund or payment reconciliation worker.
 
-Flyway runs on application startup and validates migration checksums. V1 creates
-the `tbooker` schema, V2 creates the seven catalogue tables and constraints, and
-V5 adds reservation history, HELD inventory, partial hold uniqueness, and booking-link
-integrity while retaining permanent bookings. V3 creates bookings with a unique
-constraint on the show seat. V4 adds password
-hashes and roles while preserving existing users and bookings. Legacy accounts
-without a hash cannot log in. V6 adds payment attempts, durable mock receipts,
-owner/key uniqueness and payment confirmation links; historical bookings are
-preserved without fabricated charges. V7 adds the outbox, processed-event markers,
-mock notifications, and an analytics baseline. Quiesce booking writes during the
-V7/pre-Phase-10 binary rollout; historical notifications are not fabricated.
-Migration history is in `public.flyway_schema_history`. Hibernate uses the
-`tbooker` schema with `ddl-auto: validate`; it does not create or alter tables.
+The old `POST /api/shows/{showId}/bookings` creation path rejects unpaid direct
+booking with `409`. There are no catalogue mutation handlers, payment callback
+HTTP endpoints or confirmed-booking cancellation APIs. See [API contracts and
+errors](docs/API.md) and [copyable end-to-end commands](docs/DEMO.md).
 
-Add new files in `src/main/resources/db/migration` using
-`V<version>__<description>.sql`. Never edit a migration already applied to a shared
-database. Flyway clean is disabled. The initial migration expects a database
-without an existing `tbooker` schema; do not enable automatic baselining to hide
-an existing schema mismatch.
+## Caching, messaging and replicas
 
-See [the database design](docs/DATABASE.md) for relationships, indexes, UTC
-handling, and the database-enforced show/seat screen invariant.
+Catalogue caches contain typed DTOs, with TTLs from 30 seconds to 10 minutes.
+JPA catalogue changes trigger invalidation after commit; direct SQL bypasses that
+listener, so TTL bounds stale metadata. Redis errors fall back to PostgreSQL.
+Misses are not coalesced across requests or replicas; fallback can amplify load.
 
-## Build and tests
+Booking and `BookingConfirmed` outbox insertion share one database commit.
+Publishers claim bounded batches with `SKIP LOCKED`, persist expiring leases and
+send outside the transaction. A crash after broker acknowledgment can cause a
+redelivery. Separate notification and analytics consumer groups each commit a
+unique processed-event marker together with their database projection before the
+Kafka offset advances. Delivery is **at least once**, with idempotent effects in
+these projections. Notifications are mock database records, not emails or SMS.
+
+NGINX balances across two JVMs with passive failure detection. Automatic upstream
+replay is disabled; an in-flight request can fail when its backend dies. Clients
+must inspect state and use supported idempotent retries. PostgreSQL and Kafka are
+single nodes here, so two JVMs do not make the entire system highly available.
+[Messaging details](docs/MESSAGING.md) · [Multi-instance behavior](docs/SCALING.md)
+
+## Verification and measured performance
 
 ```bash
+# JDK 21 and a working Docker daemon; no running development stack required:
 ./mvnw clean verify
+# Optional real two-JVM tests, each in its own disposable Compose project:
+python3 verification/multi_instance.py --output /tmp/tbooker-multi-instance.json
+python3 verification/deployment.py --output /tmp/tbooker-deployment.json
 ```
 
-The full suite requires a running Docker daemon. Tests generate a random JWT key;
-no production key or `.env` is required. Testcontainers creates isolated
-PostgreSQL, Kafka (messaging tests), and Redis (cache tests) containers on random ports, applies Flyway migrations, and cleans them
-up after testing. Tests use container connection details and do not depend on
-the Compose database or a developer's database credentials. The first run pulls
-the PostgreSQL, Redis, Kafka, and Testcontainers helper images. Existing regression
-classes disable optional Kafka workers; booking still records its outbox event.
-Dedicated Kafka and Redis tests enable their real infrastructure and verify
-outages, recovery, transactions, and contention.
+Testcontainers starts real PostgreSQL, Redis and Kafka containers. Missing Docker
+must fail visibly, not silently skip integration coverage. The
+[testing guide](docs/TESTING.md) maps each test family to source and records results:
+263 Maven tests, 14 distributed scenarios and 8 deployment/recovery checks passed
+in the retained Phase 12D evidence. Phase 12E re-verification is recorded there too.
 
-The suite checks health, catalogue responses, Problem Details, application
-startup, migration validation, JPA relationships, database constraints, UTC
-handling, and seed repeatability. It also checks that the default profile loads
-no sample data and that the same physical seat has independent availability in
-different shows. Booking tests verify independent committed transactions,
-deterministic row contention, rollback after an insert failure, duplicate
-protection, and API validation. Mockito is available through
-`spring-boot-starter-test`.
+[GitHub Actions CI](.github/workflows/ci.yml) runs wrapper `clean verify` on PRs to
+`main` and pushes to `main`, using Java 21, Docker and Maven caching. It uploads
+Surefire/Failsafe reports on failure and uses read-only repository permissions.
+[The merged Phase 12D run passed](https://github.com/Avnish666/Tbooker/actions/runs/38573607657).
+A green run covers Maven tests and packaging; it does not run the separate Compose
+fault suite or benchmarks and is not production certification.
 
-Phase 4 adds a real HTTP test with 20 simultaneous requests, repeated three times
-with fresh fixtures. The updated paid workflow requires one winning hold,
-one payment and booking, nineteen `409` hold conflicts, and a `BOOKED` seat.
-The winner retrieves its booking with `200`; payment creation returns `201`. The test-only connection pool allows
-all 20 transactions to contend at PostgreSQL. Migration checks call Flyway again
-and verify that migration history and application data remain unchanged.
+The [Phase 12C performance summary](docs/PERFORMANCE_SUMMARY.md) retains both good
+and poor outcomes. At a fixed **15 mixed workflows/s** (nine HTTP calls each),
+two JVMs achieved **134.68 vs 111.56 HTTP requests/s**, with mean per-run HTTP p95
+**158.42 vs 1,857.50 ms**: **20.72% more throughput, 91.47% lower p95**, using twice
+the application CPU/memory/pool budget. Across 38 short local trials, **21 met
+performance targets and 17 missed**, while post-load database invariants passed
+in every trial. These are historical measurements, not capacity promises.
 
-See [TESTING.md](docs/TESTING.md) for execution details and remaining weaknesses.
-Phase 12D passed **263 Maven tests, 14 distributed Docker checks, and 8 deployment
-checks**, with zero failures/errors/skips in the final runs. This includes all 251
-earlier Maven cases plus 12 new operational checks. See [the evidence and limitations](docs/TESTING.md#phase-12d-security-and-reliability-verification--2026-10-14).
-The Phase 12C full Maven rerun passed **251 tests: 0 failures, 0 errors, 0 skipped**.
-The following historical Phase 11 results retain their original scope:
-The final Phase 11 Maven rerun passed **251 tests: 0 failures, 0 errors, 0 skipped**.
-Separate real-container checks passed **13 end-to-end cases** (12-case suite plus
-one added in-flight payment check), and **12 k6 measured runs** passed their
-thresholds. See [the retained results and scope](docs/TESTING.md#phase-11-verification).
-It includes all 218 earlier regression cases and 33 PostgreSQL/Kafka messaging cases.
-See the full-run counts in [TESTING.md](docs/TESTING.md#phase-10-verification).
-The separate [k6 comparison](docs/PERFORMANCE.md) records performance evidence;
-correctness tests do not establish production throughput.
+## Repository map
 
-Run only the PostgreSQL booking tests with:
-
-```bash
-bash mvnw -Dtest=BookingIntegrationTests,BookingConcurrencyIntegrationTests test
+```text
+src/main/java/com/example/Tbooker/
+  controller/  service/  repository/  entity/  dto/  exception/
+  config/      payment/  cache/       event/   messaging/
+src/main/resources/       application configuration, Flyway SQL, dev seed
+src/test/                 JUnit and Testcontainers suites
+verification/             disposable Compose failure tests and retained reports
+performance/              k6 workloads, analysis, raw data and charts
+deploy/nginx/              routing and proxy configuration
+docs/                     design, API, security, deployment and evidence
+.github/workflows/ci.yml   pull-request and main-branch verification
 ```
 
-Without Docker, run the HTTP slice tests only:
+## Limits and next steps
 
-```bash
-bash mvnw -Dtest=HealthControllerTests test
-```
+No frontend, real payments/refunds, email/SMS, catalogue administration, multi-seat
+atomic booking, refresh/logout/revocation, rate limiting, or production TLS setup.
+JWT validation does not reload users or roles from the database. One database,
+one broker and one proxy remain failure points. There is no backup/restore drill,
+automatic reconciliation/refund workflow, outbox archival or DLT replay tooling.
 
-That command does not validate database integration. Tests are not automatically
-skipped when Docker is unavailable.
-
-Run the packaged application after a successful build:
-
-```bash
-# Export the database settings as shown above first.
-java -jar target/Tbooker-0.0.1-SNAPSHOT.jar
-```
-
-## Continuous integration — Phase 12A
-
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs the `Maven verify (Java 21)`
-job on pull requests targeting `main` and pushes to `main`. It uses a GitHub-hosted
-Ubuntu 24.04 runner, Temurin Java 21, and the checked-in Maven wrapper:
-
-```bash
-./mvnw clean verify --batch-mode --no-transfer-progress
-```
-
-`actions/setup-java` caches Maven dependencies using the POM and wrapper properties
-as cache inputs. Testcontainers starts disposable PostgreSQL 17, Redis 7.4, and
-Kafka 3.9.1 containers; no Compose stack, GitHub service containers, production
-database, `.env`, or repository secrets are needed. Tests generate their own JWT
-signing key. MockMvc request/response printing is disabled in CI to avoid dumping
-test credentials or bearer tokens on assertion failures. Do not add production
-secrets, shell tracing, or environment dumps to this job.
-
-The workflow has `contents: read` permission, disables persisted checkout
-credentials, and pins actions to immutable commit IDs. It uses `pull_request`,
-not privileged `pull_request_target`. Superseded PR runs are cancelled; a new
-`main` push does not cancel an already-running main job (GitHub can replace an
-older queued run). The job has a 30-minute limit and Maven has 20 minutes, leaving
-time for failure diagnostics. A nonzero Maven exit fails
-the job; test errors are not ignored or automatically retried.
-
-On failure, available Surefire/Failsafe reports are uploaded as
-`test-reports-<run-id>-<attempt>` with seven-day retention. Only report directories
-are uploaded. If setup fails before tests create reports, the upload step warns
-that no reports exist. Runner termination or cancellation can prevent upload.
-The current tests, including classes named `*IntegrationTests`, are run by
-Surefire; the Failsafe path is included for future use, not a claim that another
-suite currently executes.
-
-To reproduce locally, install a Java 21 **JDK**, start a Docker daemon accessible
-to your user, and run `./mvnw clean verify` from the repository root (`mvnw.cmd`
-on Windows). Maven Central and the container image registry must be reachable,
-or dependencies/images must already be cached. Docker must support Linux
-containers and the pause/unpause operations used by outage tests. A missing
-Docker daemon fails integration checks; it does not silently skip them.
-
-A passing CI run means compilation, the Maven unit/integration suite, and JAR
-packaging succeeded for that checkout. Review the test summary for failures and
-skips (the Phase 11 baseline is 251 tests). It does not run the separate Python
-multi-instance suite or k6 benchmarks, deploy the application, or certify
-production security, performance, or availability.
-
-After this change is approved and pushed, open a PR to `main` and verify the
-`CI` run in GitHub Actions: Java 21, successful Docker/container startup, Maven
-counts, and a green `Maven verify (Java 21)` check. Check a subsequent merge/push to
-`main` triggers CI too. Validate failure reporting with a deliberate failing test
-on a disposable branch: the job must be red and expose its report artifact, with
-no credentials in the console/report output. Branch protection requiring this
-check must be configured separately in GitHub settings. Local Maven execution
-and workflow linting are not evidence of a completed GitHub-hosted run.
-
-## Structure
-
-Under `src/main/java/com/example/Tbooker`:
-
-| Package | Responsibility |
-| --- | --- |
-| `controller` | HTTP mapping and DTO validation; thin controllers |
-| `service` | Use cases and transaction boundaries |
-| `repository` | Persistence access |
-| `cache` | Cache names, JPA change events, after-commit invalidation, and failure handling |
-| `event` | Versioned booking DTO and validation/fingerprinting |
-| `messaging` | Kafka listeners, leased asynchronous publisher, and metrics |
-| `payment` | PaymentStrategy, injected provider registry, mock adapters and durable ledger |
-| `entity` | JPA domain entities, kept out of API bodies |
-| `dto` | API request and response types |
-| `exception` | Domain exceptions and centralized HTTP mappings |
-| `config` | Security filter chain, JWT/key configuration, authentication error responses, and reservation cleanup scheduling |
-
-Unused packages contain package documentation, not speculative implementations.
-As domain modules arrive, preserve Controller → Service → Repository dependency
-direction and establish explicit boundaries inside this single application.
-
-See [AGENTS.md](AGENTS.md) for development conventions.
-
-## Future roadmap and current limits
-
-Later phases will define catalogue administration, filters and pagination,
-overlap-aware scheduling, confirmed-booking cancellation, and general request idempotency.
-Later identity work includes password reset, email verification, and token revocation.
-Real provider integration, automated reconciliation, refunds and payment
-operations need a later phase. Redis metadata caching and Kafka booking-event
-processing are implemented. Delivery work still includes
-production deployment/backup procedures. CI and reproducible local source-built
-Compose deployment are implemented through Phase 12B; Phase 12C adds measured
-capacity evidence and documented limits. Phase 12D adds operational safeguards and
-a runbook, not production certification. See the [roadmap](docs/ROADMAP.md).
-
-The Phase 12D dependency lookup returned **27 advisory matches across nine runtime
-artifacts**. Configuration-specific applicability and upgrade follow-ups are in
-[the security review](docs/SECURITY.md#dependency-review-and-unresolved-advisories).
-Passing tests do not mean dependencies are vulnerability-free.
-
-The legacy immediate-booking endpoint now returns `409`. A hold-creation retry
-also returns `409` for an allocated seat;
-reservation confirmation retries recover the same booking using the reservation ID.
-Database waits are bounded, but there is no total transaction deadline, past-show
-booking cutoff or scheduling overlap check.
-Direct SQL can make seat status disagree with booking existence, although the
-supported service transaction maintains both atomically. JWTs currently have no
-refresh/revocation flow, role changes wait for token expiry, and auth endpoints
-have no rate limiting. Legacy accounts need a future trusted enrollment flow. The tests establish the described correctness
-properties in disposable PostgreSQL tests and a local two-JVM deployment.
-They do not certify multi-host HA, production performance, or capacity.
-
-## Reservation and mock payment workflow
-
-After logging in, use `POST /api/shows/{showId}/reservations` with
-`{"showSeatId":5}` and the bearer token. It returns `201` and a reservation ID.
-View it with `GET /api/reservations/{id}`, pay with
-`POST /api/reservations/{id}/payments` and an Idempotency-Key, then retrieve
-`GET /api/reservations/{id}/booking` (`200`). Confirmation retries use
-`POST /api/reservations/{id}/confirmation` (`200`) and require stored verified
-success. Alternatively, cancel an active hold with
-`DELETE /api/reservations/{id}` (`204`). Foreign IDs return `404`; expired or
-otherwise inactive operations return `409`. Detailed examples and DTOs are in
-[API.md](docs/API.md#temporary-seat-reservations).
-
-The five-minute deadline uses PostgreSQL time after acquiring the seat lock.
-Confirmation creates a permanent booking; cleanup and reservation cancellation
-cannot undo it. The scheduler processes up to 100 expired seats per 30-second
-run, while claim paths and expiry-aware reads work even with the scheduler off.
-Optional Spring properties are `reservations.cleanup.enabled` (default `true`)
-and `reservations.cleanup.delay-ms` (default `30000`).
-
-No real payments, hold renewal, general idempotency keys, reservation
-listing, hold quotas, or confirmed-booking cancellation are included. A lost
-hold-creation response has no dedicated recovery mechanism. See the state and
-transaction diagrams in [HLD](docs/HLD.md) and [LLD](docs/LLD.md).
-
-### Payment recovery limits
-
-Gateway calls run outside application transactions. The durable mock ledger
-shares PostgreSQL but commits separately; it does not model an independently
-available real provider. The original key resumes PENDING attempts and retries
-SUCCESS/PENDING booking confirmation. The internal processor independently
-re-verifies provider proof and tolerates duplicate/out-of-order results.
-There is no automatic payment reconciliation worker, operator API, or refund
-workflow. A late extra financial success is retained for investigation, while
-booking uniqueness prevents another allocation. External exactly-once execution,
-real payment security certification, and production readiness are not claimed.
-
-
-## Booking events and Kafka operations
-
-Booking confirmation records its outbox event in the same PostgreSQL transaction.
-A short claim transaction grants a lease; the publisher then waits asynchronously
-for Kafka outside database transactions. Independent consumer groups persist one
-mock notification and count the booking using transactional deduplication. Kafka
-outages delay those projections without rolling back confirmed bookings.
-
-The default V1 topic has three partitions and uses `bookingId` as its key. Crashes
-between Kafka acknowledgment and the outbox update can cause duplicate sends;
-consumer markers prevent duplicate effects. Consumer retries are bounded; poison
-records go to a DLT only after its send is acknowledged. See [MESSAGING.md](docs/MESSAGING.md)
-for replay instructions, metrics, failure cases, schema, and multi-instance limits.
-
-```bash
-curl --fail http://localhost:8080/actuator/health/readiness
-curl -i http://localhost:8080/actuator/health/messaging
-# Use an actual ADMIN token; public registration still creates USER accounts only.
-curl --fail http://localhost:8080/actuator/metrics/booking.outbox.pending \
-  -H "Authorization: Bearer $ADMIN_TOKEN"
-docker compose exec kafka /opt/kafka/bin/kafka-topics.sh \
-  --bootstrap-server localhost:19092 --list
-```
-
-There is no notification/analytics mutation API, automatic DLT replay, retention
-cleanup job, real email integration, or Kafka HA deployment. Source and DLT topics
-retain messages for seven days by default; PostgreSQL outbox/dedup rows remain.
+The [security review](docs/SECURITY.md) retains unresolved dependency advisory
+matches (27 matches across 9 runtime artifacts as of 2026-10-14), scope analysis,
+and operational gaps. Local benchmarks are short, share one host with the load
+generator and predate Phase 12D timeout changes. The [roadmap](docs/ROADMAP.md)
+prioritizes explicit future work; these capabilities are not claimed complete.
